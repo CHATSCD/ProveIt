@@ -11,7 +11,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const supabase = createClient(
   Deno.env.get('https://aahfydouyyrvrcubwoxa.supabase.co')!,
-  Deno.env.get(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhaGZ5ZG91eXlydnJjdWJ3b3hhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTcwNDYyMiwiZXhwIjoyMDkxMjgwNjIyfQ.B5NyDJmwc8N4fFg7C0IBrZHKYjllzCsp89gcxFp6IEU)!
+  Deno.env.get('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFhaGZ5ZG91eXlydnJjdWJ3b3hhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTcwNDYyMiwiZXhwIjoyMDkxMjgwNjIyfQ.B5NyDJmwc8N4fFg7C0IBrZHKYjllzCsp89gcxFp6IEU')!
 )
 
 Deno.serve(async (_req) => {
