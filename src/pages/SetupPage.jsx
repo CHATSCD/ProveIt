@@ -17,29 +17,14 @@ export default function SetupPage() {
     setSaving(true)
     setError('')
     try {
-      // Create location
-      const { data: loc, error: locErr } = await supabase
-        .from('locations')
-        .insert({ name: name.trim(), address: address.trim(), owner_id: user.id })
-        .select()
-        .single()
+      const { error: rpcErr } = await supabase.rpc('setup_owner_location', {
+        p_name: name.trim(),
+        p_address: address.trim(),
+        p_display_name: ownerName.trim() || 'Owner',
+      })
 
-      if (locErr) throw locErr
+      if (rpcErr) throw rpcErr
 
-      // Create owner employee record
-      const { error: empErr } = await supabase
-        .from('employees')
-        .insert({
-          user_id: user.id,
-          location_id: loc.id,
-          display_name: ownerName.trim() || 'Owner',
-          role: 'owner',
-          is_active: true,
-        })
-
-      if (empErr) throw empErr
-
-      // Refresh the auth context employee
       await fetchEmployee(user.id)
     } catch (err) {
       setError(err.message)
