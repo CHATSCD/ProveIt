@@ -24,7 +24,8 @@ export default function AuthPage() {
 
   async function loadLocations() {
     if (locationsLoaded) return
-    const { data } = await supabase.from('locations').select('id, name, address').order('name')
+    const { data, error: locErr } = await supabase.from('locations').select('id, name, address').order('name')
+    if (locErr) setError('Cannot reach the server. Check your Supabase project is active.')
     setLocations(data || [])
     setLocationsLoaded(true)
   }
@@ -36,7 +37,12 @@ export default function AuthPage() {
     try {
       await signIn(email, password)
     } catch (err) {
-      setError(err.message)
+      const msg = err.message || ''
+      if (msg === 'Load failed' || msg === 'Failed to fetch' || msg.includes('fetch')) {
+        setError('Cannot reach the server. Make sure your Supabase project is active and not paused.')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
@@ -52,7 +58,12 @@ export default function AuthPage() {
       setSuccess('Account created! Check your email to confirm, then sign in.')
       setTab('signin')
     } catch (err) {
-      setError(err.message)
+      const msg = err.message || ''
+      if (msg === 'Load failed' || msg === 'Failed to fetch' || msg.includes('fetch')) {
+        setError('Cannot reach the server. Make sure your Supabase project is active and not paused.')
+      } else {
+        setError(msg)
+      }
     } finally {
       setLoading(false)
     }
