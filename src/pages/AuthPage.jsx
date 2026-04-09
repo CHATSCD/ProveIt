@@ -45,10 +45,10 @@ export default function AuthPage() {
   async function handleSignUp(e) {
     e.preventDefault()
     setError('')
-    if (!regLocationId) { setError('Please select a location'); return }
+    if (regRole !== 'owner' && !regLocationId) { setError('Please select a location'); return }
     setLoading(true)
     try {
-      await signUp(regEmail, regPassword, regName, regRole, regLocationId)
+      await signUp(regEmail, regPassword, regName, regRole, regRole === 'owner' ? null : regLocationId)
       setSuccess('Account created! Check your email to confirm, then sign in.')
       setTab('signin')
     } catch (err) {
@@ -201,6 +201,7 @@ export default function AuthPage() {
                   <option value="owner">Owner</option>
                 </select>
               </div>
+              {regRole !== 'owner' && (
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Location</label>
                 <select
@@ -218,6 +219,7 @@ export default function AuthPage() {
                   <p className="text-xs text-yellow-400 mt-1">No locations found. An owner must create one first.</p>
                 )}
               </div>
+              )}
               <button
                 type="submit"
                 disabled={loading}

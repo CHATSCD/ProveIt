@@ -54,8 +54,8 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (error) throw error
 
-    // Create employee record
-    if (data.user) {
+    // Create employee record (owners skip this — SetupPage creates it with their location)
+    if (data.user && role !== 'owner') {
       const { error: empError } = await supabase.from('employees').insert({
         user_id: data.user.id,
         display_name: displayName,
