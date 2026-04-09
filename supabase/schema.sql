@@ -112,14 +112,14 @@ alter table shift_scores    enable row level security;
 -- Helper functions
 
 create or replace function get_my_location_id()
-returns uuid language sql stable as $$
+returns uuid language sql stable security definer as $$
   select location_id from employees
   where user_id = auth.uid() and is_active = true
   limit 1;
 $$;
 
 create or replace function is_manager_or_above()
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer as $$
   select exists (
     select 1 from employees
     where user_id = auth.uid()
