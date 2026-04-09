@@ -111,13 +111,16 @@ export default function EmployeeDashboard() {
       // Active (pending) check requests for this employee's location
       const { data: checks } = await supabase
         .from('check_requests')
-        .select('*, stations(id, name, qr_code_token, location_id)')
+        .select('*, stations(id, name, qr_code_token, location_id, assigned_employee_id)')
         .eq('status', 'pending')
         .eq('stations.location_id', employee.location_id)
         .gt('expires_at', new Date().toISOString())
         .order('triggered_at', { ascending: false })
 
-      setActiveChecks(checks?.filter(c => c.stations) || [])
+      setActiveChecks(checks?.filter(c =>
+        c.stations &&
+        (!c.stations.assigned_employee_id || c.stations.assigned_employee_id === employee.id)
+      ) || [])
 
       // Recent submissions by this employee
       const { data: subs } = await supabase

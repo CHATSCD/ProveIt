@@ -80,13 +80,14 @@ function QRModal({ station, onClose }) {
   )
 }
 
-function StationForm({ station, onSave, onCancel, locationId }) {
+function StationForm({ station, onSave, onCancel, locationId, employees }) {
   const [name, setName] = useState(station?.name || '')
   const [scheduleType, setScheduleType] = useState(station?.schedule?.type || 'scheduled')
   const [intervalMinutes, setIntervalMinutes] = useState(station?.schedule?.interval_minutes || 120)
   const [windowStart, setWindowStart] = useState(station?.schedule?.active_start_time || '08:00')
   const [windowEnd, setWindowEnd] = useState(station?.schedule?.active_end_time || '22:00')
   const [submissionWindow, setSubmissionWindow] = useState(station?.schedule?.submission_window_minutes || 15)
+  const [assignedEmployeeId, setAssignedEmployeeId] = useState(station?.assigned_employee_id || '')
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
@@ -100,6 +101,7 @@ function StationForm({ station, onSave, onCancel, locationId }) {
         windowStart,
         windowEnd,
         submissionWindow: parseInt(submissionWindow),
+        assignedEmployeeId: assignedEmployeeId || null,
       })
     } finally {
       setSaving(false)
@@ -189,6 +191,21 @@ function StationForm({ station, onSave, onCancel, locationId }) {
         </div>
       </div>
 
+      <div>
+        <label className="block text-xs font-medium text-gray-400 mb-1">Assign to Employee</label>
+        <select
+          value={assignedEmployeeId}
+          onChange={e => setAssignedEmployeeId(e.target.value)}
+          className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
+          style={{ background: '#111827', border: '1px solid #2d3748' }}
+        >
+          <option value="">Anyone at this location</option>
+          {employees.map(emp => (
+            <option key={emp.id} value={emp.id}>{emp.display_name}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="flex gap-2 pt-2">
         <button onClick={handleSave} disabled={saving || !name.trim()}
                 className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white"
@@ -208,6 +225,7 @@ function StationForm({ station, onSave, onCancel, locationId }) {
 export default function StationsPage() {
   const { employee } = useAuth()
   const [stations, setStations] = useState([])
+  const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingStation, setEditingStation] = useState(null)
@@ -226,13 +244,24 @@ export default function StationsPage() {
     setLoading(false)
   }, [locationId])
 
-  useEffect(() => { loadStations() }, [loadStations])
+  useEffect(() => {
+    loadStations()
+    if (locationId) {
+      supabase.from('employees')
+        .select('id, display_name, role')
+        .eq('location_id', locationId)
+        .eq('is_active', true)
+        .in('role', ['employee', 'manager'])
+        .order('display_name')
+        .then(({ data }) => setEmployees(data || []))
+    }
+  }, [loadStations, locationId])
 
-  async function handleSave({ name, scheduleType, intervalMinutes, windowStart, windowEnd, submissionWindow }) {
+  async function handleSave({ name, scheduleType, intervalMinutes, windowStart, windowEnd, submissionWindow, assignedEmployeeId }) {
     try {
       if (editingStation) {
         // Update existing station
-        await supabase.from('stations').update({ name }).eq('id', editingStation.id)
+        await supabase.from('stations').update({ name, assigned_employee_id: assignedEmployeeId }).eq('id', editingStation.id)
         // Update schedule
         if (editingStation.schedule?.id) {
           await supabase.from('check_schedules').update({
@@ -251,6 +280,7 @@ export default function StationsPage() {
           name,
           qr_code_token: token,
           is_active: true,
+          assigned_employee_id: assignedEmployeeId,
         }).select().single()
 
         // Create schedule
@@ -302,6 +332,7 @@ export default function StationsPage() {
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditingStation(null) }}
             locationId={locationId}
+            employees={employees}
           />
         </div>
       )}
@@ -345,6 +376,11 @@ export default function StationsPage() {
                       {' '}{st.schedule.submission_window_minutes} min window
                     </div>
                   )}
+                  <div className="text-xs mt-1" style={{ color: st.assigned_employee_id ? '#ff6b2b' : '#4b5563' }}>
+                    {st.assigned_employee_id
+                      ? `Assigned: ${employees.find(e => e.id === st.assigned_employee_id)?.display_name || 'Unknown'}`
+                      : 'Unassigned — visible to all'}
+                  </div>
                   <div className="text-xs text-gray-600 mt-1 font-mono truncate">
                     /check/{st.qr_code_token}
                   </div>
