@@ -1,20 +1,14 @@
--- ============================================================
--- ProveIt — Database Schema
+-- ProveIt Database Schema
 -- Run this in the Supabase SQL Editor
--- ============================================================
 
 create extension if not exists "uuid-ossp";
 
--- ─────────────────────────────────────────────────────────────
--- TABLES
--- ─────────────────────────────────────────────────────────────
-
 create table if not exists locations (
-  id          uuid primary key default uuid_generate_v4(),
-  name        text not null,
-  address     text,
-  owner_id    uuid references auth.users(id),
-  created_at  timestamptz default now()
+  id         uuid primary key default uuid_generate_v4(),
+  name       text not null,
+  address    text,
+  owner_id   uuid references auth.users(id),
+  created_at timestamptz default now()
 );
 
 create table if not exists employees (
@@ -28,12 +22,12 @@ create table if not exists employees (
 );
 
 create table if not exists stations (
-  id             uuid primary key default uuid_generate_v4(),
-  location_id    uuid references locations(id) on delete cascade not null,
-  name           text not null,
-  qr_code_token  text unique not null,
-  is_active      boolean default true,
-  created_at     timestamptz default now()
+  id            uuid primary key default uuid_generate_v4(),
+  location_id   uuid references locations(id) on delete cascade not null,
+  name          text not null,
+  qr_code_token text unique not null,
+  is_active     boolean default true,
+  created_at    timestamptz default now()
 );
 
 create table if not exists check_schedules (
@@ -61,8 +55,8 @@ create table if not exists check_requests (
   status       text default 'pending' check (status in ('pending', 'submitted', 'missed'))
 );
 
-create index if not exists check_requests_station_status on check_requests(station_id, status);
-create index if not exists check_requests_expires_at on check_requests(expires_at);
+create index if not exists idx_check_requests_station on check_requests(station_id, status);
+create index if not exists idx_check_requests_expires on check_requests(expires_at);
 
 create table if not exists submissions (
   id                         uuid primary key default uuid_generate_v4(),
@@ -86,28 +80,26 @@ create table if not exists submissions (
   rated_by uuid references auth.users(id)
 );
 
-create index if not exists submissions_employee_id on submissions(employee_id);
-create index if not exists submissions_rated_at on submissions(rated_at) where rated_at is null;
+create index if not exists idx_submissions_employee on submissions(employee_id);
+create index if not exists idx_submissions_rated on submissions(rated_at) where rated_at is null;
 
 create table if not exists shift_scores (
-  id             uuid primary key default uuid_generate_v4(),
-  employee_id    uuid references employees(id) on delete cascade not null,
-  location_id    uuid references locations(id) on delete cascade not null,
-  period_start   timestamptz not null,
-  period_end     timestamptz not null,
-  total_points   int default 0,
-  on_time_count  int default 0,
-  late_count     int default 0,
-  missed_count   int default 0,
-  avg_rating     float default 0,
-  rank           int,
-  created_at     timestamptz default now(),
+  id            uuid primary key default uuid_generate_v4(),
+  employee_id   uuid references employees(id) on delete cascade not null,
+  location_id   uuid references locations(id) on delete cascade not null,
+  period_start  timestamptz not null,
+  period_end    timestamptz not null,
+  total_points  int default 0,
+  on_time_count int default 0,
+  late_count    int default 0,
+  missed_count  int default 0,
+  avg_rating    float default 0,
+  score_rank    int,
+  created_at    timestamptz default now(),
   unique(employee_id, location_id, period_start)
 );
 
--- ─────────────────────────────────────────────────────────────
--- ROW LEVEL SECURITY
--- ─────────────────────────────────────────────────────────────
+-- Row Level Security
 
 alter table locations       enable row level security;
 alter table employees       enable row level security;
@@ -117,16 +109,12 @@ alter table check_requests  enable row level security;
 alter table submissions     enable row level security;
 alter table shift_scores    enable row level security;
 
--- ─────────────────────────────────────────────────────────────
--- HELPER FUNCTIONS
--- ─────────────────────────────────────────────────────────────
+-- Helper functions
 
 create or replace function get_my_location_id()
 returns uuid language sql stable as $$
-  select location_id
-  from employees
-  where user_id = auth.uid()
-    and is_active = true
+  select location_id from employees
+  where user_id = auth.uid() and is_active = true
   limit 1;
 $$;
 
@@ -135,196 +123,195 @@ returns boolean language sql stable as $$
   select exists (
     select 1 from employees
     where user_id = auth.uid()
-      and is_active = true
-      and role in ('manager', 'owner')
+    and is_active = true
+    and role in ('manager', 'owner')
   );
 $$;
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: locations
--- ─────────────────────────────────────────────────────────────
+-- Policies: locations
 
-create policy "Users can see their own location"
+create policy "loc_select"
   on locations for select
   using (id = get_my_location_id());
 
-create policy "Owners can create locations"
+create policy "loc_insert"
   on locations for insert
   with check (auth.uid() = owner_id);
 
-create policy "Owners can update their location"
+create policy "loc_update"
   on locations for update
   using (auth.uid() = owner_id);
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: employees
--- ─────────────────────────────────────────────────────────────
+-- Policies: employees
 
-create policy "Employees can see colleagues at same location"
-  on employees for select
-  using (location_id = get_my_location_id());
-
-create policy "Users can see their own employee record"
+create policy "emp_select_own"
   on employees for select
   using (user_id = auth.uid());
 
-create policy "Anyone can create their own employee record"
+create policy "emp_select_colleagues"
+  on employees for select
+  using (location_id = get_my_location_id());
+
+create policy "emp_insert"
   on employees for insert
   with check (user_id = auth.uid());
 
-create policy "Managers can update employees at their location"
+create policy "emp_update"
   on employees for update
   using (location_id = get_my_location_id() and is_manager_or_above());
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: stations
--- ─────────────────────────────────────────────────────────────
+-- Policies: stations
 
-create policy "Location members can view stations"
+create policy "sta_select"
   on stations for select
   using (location_id = get_my_location_id());
 
-create policy "Managers can insert stations"
+create policy "sta_insert"
   on stations for insert
   with check (location_id = get_my_location_id() and is_manager_or_above());
 
-create policy "Managers can update stations"
+create policy "sta_update"
   on stations for update
   using (location_id = get_my_location_id() and is_manager_or_above());
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: check_schedules
--- ─────────────────────────────────────────────────────────────
+-- Policies: check_schedules
 
-create policy "Location members can view schedules"
+create policy "sch_select"
   on check_schedules for select
   using (
     station_id in (
-      select id from stations
-      where location_id = get_my_location_id()
+      select id from stations where location_id = get_my_location_id()
     )
   );
 
-create policy "Managers can manage schedules"
-  on check_schedules for all
-  using (
+create policy "sch_insert"
+  on check_schedules for insert
+  with check (
     station_id in (
-      select id from stations
-      where location_id = get_my_location_id()
+      select id from stations where location_id = get_my_location_id()
     )
     and is_manager_or_above()
   );
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: check_requests
--- ─────────────────────────────────────────────────────────────
+create policy "sch_update"
+  on check_schedules for update
+  using (
+    station_id in (
+      select id from stations where location_id = get_my_location_id()
+    )
+    and is_manager_or_above()
+  );
 
-create policy "Location members can view check requests"
+create policy "sch_delete"
+  on check_schedules for delete
+  using (
+    station_id in (
+      select id from stations where location_id = get_my_location_id()
+    )
+    and is_manager_or_above()
+  );
+
+-- Policies: check_requests
+
+create policy "cr_select"
   on check_requests for select
   using (
     station_id in (
-      select id from stations
-      where location_id = get_my_location_id()
+      select id from stations where location_id = get_my_location_id()
     )
   );
 
-create policy "Managers can insert check requests"
+create policy "cr_insert"
   on check_requests for insert
   with check (
     station_id in (
-      select id from stations
-      where location_id = get_my_location_id()
+      select id from stations where location_id = get_my_location_id()
     )
     and is_manager_or_above()
   );
 
-create policy "System can update check request status"
+create policy "cr_update"
   on check_requests for update
   using (
     station_id in (
-      select id from stations
-      where location_id = get_my_location_id()
+      select id from stations where location_id = get_my_location_id()
     )
   );
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: submissions
--- ─────────────────────────────────────────────────────────────
+-- Policies: submissions
 
-create policy "Employees see their own submissions"
+create policy "sub_select_own"
   on submissions for select
   using (
     employee_id = (
-      select id from employees
-      where user_id = auth.uid()
-      limit 1
+      select id from employees where user_id = auth.uid() limit 1
     )
   );
 
-create policy "Managers see all submissions for their location"
+create policy "sub_select_manager"
   on submissions for select
   using (
     is_manager_or_above()
     and check_request_id in (
-      select check_requests.id
-      from check_requests
-      join stations on check_requests.station_id = stations.id
-      where stations.location_id = get_my_location_id()
+      select id from check_requests
+      where station_id in (
+        select id from stations where location_id = get_my_location_id()
+      )
     )
   );
 
-create policy "Employees can insert their own submissions"
+create policy "sub_insert"
   on submissions for insert
   with check (
     employee_id = (
-      select id from employees
-      where user_id = auth.uid()
-      limit 1
+      select id from employees where user_id = auth.uid() limit 1
     )
   );
 
-create policy "Managers can rate submissions"
+create policy "sub_update"
   on submissions for update
   using (
     is_manager_or_above()
     and check_request_id in (
-      select check_requests.id
-      from check_requests
-      join stations on check_requests.station_id = stations.id
-      where stations.location_id = get_my_location_id()
+      select id from check_requests
+      where station_id in (
+        select id from stations where location_id = get_my_location_id()
+      )
     )
   );
 
--- ─────────────────────────────────────────────────────────────
--- POLICIES: shift_scores
--- ─────────────────────────────────────────────────────────────
+-- Policies: shift_scores
 
-create policy "Location members can view shift scores"
+create policy "ss_select"
   on shift_scores for select
   using (location_id = get_my_location_id());
 
-create policy "Employees can upsert their own shift score"
-  on shift_scores for all
-  using (
+create policy "ss_insert"
+  on shift_scores for insert
+  with check (
     employee_id = (
-      select id from employees
-      where user_id = auth.uid()
-      limit 1
+      select id from employees where user_id = auth.uid() limit 1
     )
   );
 
--- ─────────────────────────────────────────────────────────────
--- STORAGE BUCKET
--- ─────────────────────────────────────────────────────────────
+create policy "ss_update"
+  on shift_scores for update
+  using (
+    employee_id = (
+      select id from employees where user_id = auth.uid() limit 1
+    )
+  );
+
+-- Storage bucket for submission photos
 
 insert into storage.buckets (id, name, public)
 values ('submissions', 'submissions', true)
 on conflict do nothing;
 
-create policy "Employees can upload to submissions"
+create policy "storage_insert"
   on storage.objects for insert
   with check (bucket_id = 'submissions' and auth.role() = 'authenticated');
 
-create policy "Public can view submission photos"
+create policy "storage_select"
   on storage.objects for select
   using (bucket_id = 'submissions');
