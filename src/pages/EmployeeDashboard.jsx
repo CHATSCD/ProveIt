@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
@@ -103,6 +103,8 @@ export default function EmployeeDashboard() {
   const [shiftScore, setShiftScore] = useState(null)
   const [leaderboardRank, setLeaderboardRank] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [checkAlert, setCheckAlert] = useState(null)
+  const alertTimer = useRef(null)
 
   const loadData = useCallback(async () => {
     if (!employee) return
@@ -168,13 +170,38 @@ export default function EmployeeDashboard() {
     // Real-time: listen for new check requests
     const channel = supabase
       .channel('employee-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'check_requests' }, loadData)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'check_requests' }, async (payload) => {
+        loadData()
+        const newCheck = payload.new
+        if (newCheck?.status === 'pending' && employee) {
+          try {
+            const { data: st } = await supabase
+              .from('stations')
+              .select('name, assigned_employee_id, location_id')
+              .eq('id', newCheck.station_id)
+              .single()
+
+            if (
+              st &&
+              st.location_id === employee.location_id &&
+              (!st.assigned_employee_id || st.assigned_employee_id === employee.id)
+            ) {
+              if (alertTimer.current) clearTimeout(alertTimer.current)
+              setCheckAlert({ stationName: st.name, expiresAt: newCheck.expires_at })
+              alertTimer.current = setTimeout(() => setCheckAlert(null), 10000)
+            }
+          } catch {}
+        }
+      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'check_requests' }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, loadData)
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
-  }, [loadData])
+    return () => {
+      supabase.removeChannel(channel)
+      if (alertTimer.current) clearTimeout(alertTimer.current)
+    }
+  }, [loadData, employee])
 
   if (loading) {
     return (
@@ -190,6 +217,36 @@ export default function EmployeeDashboard() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
+      {/* New check alert banner */}
+      {checkAlert && (
+        <div
+          className="mb-4 rounded-2xl p-4 flex items-center justify-between"
+          style={{
+            background: 'rgba(255,107,43,0.12)',
+            border: '1px solid rgba(255,107,43,0.5)',
+            boxShadow: '0 0 24px rgba(255,107,43,0.15)',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-xl">📋</span>
+            <div>
+              <div className="font-bold text-white text-sm">
+                New check at {checkAlert.stationName}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                Submit before the window closes
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setCheckAlert(null)}
+            className="text-gray-500 hover:text-gray-300 text-lg leading-none ml-3"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Header with score */}
       <div className="flex items-center justify-between mb-6">
         <div>

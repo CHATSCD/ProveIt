@@ -88,6 +88,7 @@ function StationForm({ station, onSave, onCancel, locationId, employees }) {
   const [windowEnd, setWindowEnd] = useState(station?.schedule?.active_end_time || '22:00')
   const [submissionWindow, setSubmissionWindow] = useState(station?.schedule?.submission_window_minutes || 15)
   const [assignedEmployeeId, setAssignedEmployeeId] = useState(station?.assigned_employee_id || '')
+  const [minGapMinutes, setMinGapMinutes] = useState(station?.schedule?.min_gap_minutes || 60)
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
@@ -102,6 +103,7 @@ function StationForm({ station, onSave, onCancel, locationId, employees }) {
         windowEnd,
         submissionWindow: parseInt(submissionWindow),
         assignedEmployeeId: assignedEmployeeId || null,
+        minGapMinutes: parseInt(minGapMinutes),
       })
     } finally {
       setSaving(false)
@@ -160,15 +162,36 @@ function StationForm({ station, onSave, onCancel, locationId, employees }) {
         </div>
       )}
 
+      {scheduleType === 'random' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-1">Minimum Gap Between Checks</label>
+          <select
+            value={minGapMinutes}
+            onChange={e => setMinGapMinutes(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
+            style={{ background: '#111827', border: '1px solid #2d3748' }}
+          >
+            <option value={30}>At least 30 minutes apart</option>
+            <option value={60}>At least 1 hour apart</option>
+            <option value={120}>At least 2 hours apart</option>
+            <option value={180}>At least 3 hours apart</option>
+          </select>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Active From</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            {scheduleType === 'random' ? 'Surprise Window From' : 'Active From'}
+          </label>
           <input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)}
                  className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
                  style={{ background: '#111827', border: '1px solid #2d3748' }} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Active Until</label>
+          <label className="block text-xs font-medium text-gray-400 mb-1">
+            {scheduleType === 'random' ? 'Surprise Window Until' : 'Active Until'}
+          </label>
           <input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)}
                  className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
                  style={{ background: '#111827', border: '1px solid #2d3748' }} />
@@ -257,20 +280,23 @@ export default function StationsPage() {
     }
   }, [loadStations, locationId])
 
-  async function handleSave({ name, scheduleType, intervalMinutes, windowStart, windowEnd, submissionWindow, assignedEmployeeId }) {
+  async function handleSave({ name, scheduleType, intervalMinutes, windowStart, windowEnd, submissionWindow, assignedEmployeeId, minGapMinutes }) {
     try {
+      const schedulePayload = {
+        type: scheduleType,
+        interval_minutes: intervalMinutes,
+        active_start_time: windowStart,
+        active_end_time: windowEnd,
+        submission_window_minutes: submissionWindow,
+        min_gap_minutes: scheduleType === 'random' ? minGapMinutes : null,
+      }
+
       if (editingStation) {
         // Update existing station
         await supabase.from('stations').update({ name, assigned_employee_id: assignedEmployeeId }).eq('id', editingStation.id)
         // Update schedule
         if (editingStation.schedule?.id) {
-          await supabase.from('check_schedules').update({
-            type: scheduleType,
-            interval_minutes: intervalMinutes,
-            active_start_time: windowStart,
-            active_end_time: windowEnd,
-            submission_window_minutes: submissionWindow,
-          }).eq('id', editingStation.schedule.id)
+          await supabase.from('check_schedules').update(schedulePayload).eq('id', editingStation.schedule.id)
         }
       } else {
         // Create new station
@@ -286,11 +312,7 @@ export default function StationsPage() {
         // Create schedule
         await supabase.from('check_schedules').insert({
           station_id: newStation.id,
-          type: scheduleType,
-          interval_minutes: intervalMinutes,
-          active_start_time: windowStart,
-          active_end_time: windowEnd,
-          submission_window_minutes: submissionWindow,
+          ...schedulePayload,
         })
       }
 
@@ -371,7 +393,9 @@ export default function StationsPage() {
                   </div>
                   {st.schedule && (
                     <div className="text-xs text-gray-500 mt-1">
-                      {st.schedule.type === 'scheduled' && `Every ${st.schedule.interval_minutes} min • `}
+                      {st.schedule.type === 'scheduled'
+                        ? `Every ${st.schedule.interval_minutes} min • `
+                        : st.schedule.min_gap_minutes ? `Min ${st.schedule.min_gap_minutes} min gap • ` : ''}
                       {st.schedule.active_start_time}–{st.schedule.active_end_time} •
                       {' '}{st.schedule.submission_window_minutes} min window
                     </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDistanceToNow, format } from 'date-fns'
+import ComplianceExport from '../components/ComplianceExport'
 
 function StationStatusCard({ station, onTriggerCheck }) {
   const [triggering, setTriggering] = useState(false)
@@ -125,6 +126,7 @@ export default function ManagerDashboard() {
   const [topPerformer, setTopPerformer] = useState(null)
   const [loading, setLoading] = useState(true)
   const [pendingRatings, setPendingRatings] = useState(0)
+  const [showExport, setShowExport] = useState(false)
 
   const locationId = employee?.location_id
 
@@ -266,13 +268,22 @@ export default function ManagerDashboard() {
             {employee?.locations?.name || 'All Stations'} • {format(new Date(), 'EEEE, MMMM d')}
           </p>
         </div>
-        <button
-          onClick={loadData}
-          className="px-3 py-2 rounded-xl text-sm font-medium transition-all"
-          style={{ background: '#1f2937', color: '#9ca3af', border: '1px solid #2d3748' }}
-        >
-          ↻ Refresh
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowExport(true)}
+            className="px-3 py-2 rounded-xl text-sm font-semibold transition-all"
+            style={{ background: 'rgba(255,107,43,0.15)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.3)' }}
+          >
+            ⬇ Export
+          </button>
+          <button
+            onClick={loadData}
+            className="px-3 py-2 rounded-xl text-sm font-medium transition-all"
+            style={{ background: '#1f2937', color: '#9ca3af', border: '1px solid #2d3748' }}
+          >
+            ↻ Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -333,6 +344,8 @@ export default function ManagerDashboard() {
           ))}
         </div>
       )}
+
+      {showExport && <ComplianceExport onClose={() => setShowExport(false)} />}
     </div>
   )
 }

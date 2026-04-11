@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import NotificationBell from './NotificationBell'
 
 const NAV_ITEMS_MANAGER = [
   { path: '/dashboard', label: 'Dashboard', icon: '⬡' },
@@ -58,7 +59,8 @@ export default function Navbar() {
       </div>
 
       {/* User info + sign out */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
+        <NotificationBell />
         <div className="hidden sm:flex flex-col items-end">
           <span className="text-white text-sm font-medium">{employee?.display_name}</span>
           <span className="text-xs font-semibold uppercase tracking-wider"
