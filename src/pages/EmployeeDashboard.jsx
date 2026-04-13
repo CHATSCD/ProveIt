@@ -167,7 +167,10 @@ export default function EmployeeDashboard() {
   useEffect(() => {
     loadData()
 
-    // Real-time: listen for new check requests
+    // Poll every 20 seconds as reliable fallback for active checks
+    const interval = setInterval(loadData, 20000)
+
+    // Realtime as bonus (requires check_requests in supabase_realtime publication)
     const channel = supabase
       .channel('employee-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'check_requests' }, async (payload) => {
@@ -198,6 +201,7 @@ export default function EmployeeDashboard() {
       .subscribe()
 
     return () => {
+      clearInterval(interval)
       supabase.removeChannel(channel)
       if (alertTimer.current) clearTimeout(alertTimer.current)
     }

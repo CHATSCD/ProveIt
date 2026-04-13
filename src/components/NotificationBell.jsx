@@ -26,6 +26,10 @@ export default function NotificationBell() {
     if (!isManager || !locationId) return
     loadNotifications()
 
+    // Poll every 15 seconds as reliable fallback
+    const interval = setInterval(loadNotifications, 15000)
+
+    // Realtime as bonus (requires table in supabase_realtime publication)
     const channel = supabase
       .channel('notif-live')
       .on('postgres_changes', {
@@ -36,7 +40,10 @@ export default function NotificationBell() {
       }, loadNotifications)
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
+    return () => {
+      clearInterval(interval)
+      supabase.removeChannel(channel)
+    }
   }, [locationId, isManager, loadNotifications])
 
   useEffect(() => {
