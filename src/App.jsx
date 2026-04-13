@@ -10,6 +10,7 @@ import StationsPage from './pages/StationsPage'
 import SubmissionsPage from './pages/SubmissionsPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import SetupPage from './pages/SetupPage'
+import StaffPage from './pages/StaffPage'
 
 function LoadingScreen() {
   return (
@@ -66,6 +67,7 @@ function AppRoutes() {
           <>
             <Route path="/stations" element={<StationsPage />} />
             <Route path="/submissions" element={<SubmissionsPage />} />
+            <Route path="/staff" element={<StaffPage />} />
           </>
         )}
 

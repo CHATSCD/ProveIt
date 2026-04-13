@@ -7,6 +7,7 @@ const NAV_ITEMS_MANAGER = [
   { path: '/stations', label: 'Stations', icon: '◎' },
   { path: '/submissions', label: 'Rate Submissions', icon: '★' },
   { path: '/leaderboard', label: 'Leaderboard', icon: '▲' },
+  { path: '/staff', label: 'Staff', icon: '⊕' },
 ]
 
 const NAV_ITEMS_EMPLOYEE = [
