@@ -193,7 +193,9 @@ export default function EmployeeDashboard() {
               setCheckAlert({ stationName: st.name, expiresAt: newCheck.expires_at })
               alertTimer.current = setTimeout(() => setCheckAlert(null), 10000)
             }
-          } catch {}
+          } catch {
+            // no matching station for this check — ignore
+          }
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'check_requests' }, loadData)

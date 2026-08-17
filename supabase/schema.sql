@@ -1,11 +1,16 @@
 -- ============================================================
 -- ProveIt — schema.sql
 -- Regenerated directly from the live Supabase database (project
--- aahfydouyyrvrcubwoxa) on 2026-08-14 via information_schema /
--- pg_catalog introspection, NOT hand-maintained. This replaces a
--- stale copy that had drifted significantly behind production —
--- every table/function/policy below was verified against the
--- actual live schema before being written here.
+-- aahfydouyyrvrcubwoxa) on 2026-08-17 via pg_catalog introspection
+-- (pg_get_functiondef, pg_policies, cron.job, storage.buckets/objects),
+-- NOT hand-maintained. Every table/function/policy/cron job/storage
+-- policy below was verified against the actual live schema.
+--
+-- A prior version of this file was truncated mid-statement (cut off
+-- inside submit_manager_rating) and was missing several RPCs, the
+-- storage bucket setup, and the pg_cron schedules entirely — so running
+-- it against a fresh project would not have reproduced a working app.
+-- This version is complete and was checked to apply cleanly.
 -- ============================================================
 
 create extension if not exists "uuid-ossp";
@@ -167,9 +172,6 @@ create table if not exists coachings (
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
--- Note: several tables carry duplicate policies (same logic, two names)
--- left over from an earlier migration pass — harmless since permissive
--- policies OR together, but worth cleaning up eventually.
 
 alter table locations enable row level security;
 alter table employees enable row level security;
@@ -272,21 +274,25 @@ create policy "coaching_select_own_location" on coachings for select using (loca
 -- ============================================================
 -- HELPER FUNCTIONS
 -- ============================================================
+-- All SECURITY DEFINER helpers pin search_path to 'public' — without it,
+-- a role able to create objects earlier in the caller's search_path could
+-- shadow the tables/functions these reference (CVE-class search_path
+-- hijack against SECURITY DEFINER functions).
 
 create or replace function get_my_location_id()
-returns uuid language sql stable security definer as $$
+returns uuid language sql stable security definer set search_path = public as $$
   select location_id from employees
   where user_id = auth.uid() and is_active = true
   limit 1;
 $$;
 
 create or replace function get_my_employee()
-returns employees language sql stable as $$
+returns employees language sql stable set search_path = public as $$
   select * from employees where user_id = auth.uid() and is_active = true limit 1;
 $$;
 
 create or replace function is_manager_or_above()
-returns boolean language sql stable security definer as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from employees
     where user_id = auth.uid() and is_active = true and role in ('manager', 'owner')
@@ -294,7 +300,7 @@ returns boolean language sql stable security definer as $$
 $$;
 
 create or replace function is_owner()
-returns boolean language sql stable security definer as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from employees
     where user_id = auth.uid() and is_active = true and role = 'owner'
@@ -302,7 +308,7 @@ returns boolean language sql stable security definer as $$
 $$;
 
 create or replace function is_platform_admin()
-returns boolean language sql stable security definer as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from platform_admins where user_id = auth.uid());
 $$;
 
@@ -350,6 +356,7 @@ begin
     raise exception 'Not authenticated';
   end if;
 
+  -- Guard: caller must already be an owner of at least one location
   select display_name into v_display_name
   from employees where user_id = auth.uid() and role = 'owner' limit 1;
 
@@ -443,6 +450,10 @@ begin
     select max(created_at) into v_last_coaching_at
       from coachings where employee_id = v_submission.employee_id;
 
+    -- Simulate the sequence of rated submissions since the last coaching:
+    -- every score below 9 adds a strike; every 3 CONSECUTIVE scores of
+    -- 13+ cancels the oldest still-active strike (redemption, keeps it
+    -- balanced); any other score just breaks the high-streak.
     for rec in
       select sub.id, sub.manager_rating_total as total
       from submissions sub
@@ -473,14 +484,332 @@ begin
         from coachings where employee_id = v_submission.employee_id;
       v_is_escalation := (v_coaching_number % 3 = 0);
 
-      insert into coachings (employee_id, location_id, triggering_submission_ids, coaching_number, is_escalation)
-      values (v_submission.employee_id, v_location_id, v_active_strikes[1:3], v_coaching_number, v_is_escalation)
+      insert into coachings (
+        employee_id, location_id, triggering_submission_ids,
+        coaching_number, is_escalation
+      )
+      values (
+        v_submission.employee_id, v_location_id, v_active_strikes[1:3],
+        v_coaching_number, v_is_escalation
+      )
       returning id into v_coaching_id;
     end if;
   end if;
 
   return jsonb_build_object(
-    'total', v_total, 'needs_fix', v_total < 9,
+    'total', v_total,
+    'needs_fix', v_total < 9,
     'active_strikes', coalesce(array_length(v_active_strikes, 1), 0),
     'redemptions_applied', v_redemptions,
-    'coaching_triggered', 
+    'coaching_triggered', v_coaching_id is not null,
+    'coaching_id', v_coaching_id,
+    'coaching_number', v_coaching_number,
+    'is_escalation', coalesce(v_is_escalation, false)
+  );
+end;
+$$;
+
+-- submit_fixit_photos: employee re-submits photos within the 30-minute
+-- FixIt window opened by a sub-9 manager rating above.
+create or replace function submit_fixit_photos(
+  p_submission_id uuid, p_photo_urls text[]
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_submission submissions%rowtype;
+begin
+  select * into v_submission from submissions where id = p_submission_id;
+  if v_submission.id is null then
+    raise exception 'Submission not found';
+  end if;
+  if v_submission.employee_id != (select id from employees where user_id = auth.uid() and is_active = true limit 1) then
+    raise exception 'Not authorized';
+  end if;
+  if v_submission.fix_status != 'needs_fix' then
+    raise exception 'This submission is not awaiting a fix';
+  end if;
+  if now() > v_submission.fix_deadline then
+    update submissions set fix_status = 'expired' where id = p_submission_id;
+    raise exception 'The 30-minute fix window has expired';
+  end if;
+
+  update submissions set
+    fix_photo_urls = p_photo_urls,
+    fix_status = 'fixed',
+    fixed_at = now()
+  where id = p_submission_id;
+end;
+$$;
+
+-- expire_stale_fixits: run on a schedule (see pg_cron below) to flip any
+-- FixIt whose 30-minute window lapsed without a re-submission to 'expired'.
+create or replace function expire_stale_fixits()
+returns void language sql security definer set search_path = public as $$
+  update submissions
+  set fix_status = 'expired'
+  where fix_status = 'needs_fix' and fix_deadline < now();
+$$;
+
+-- sign_coaching_employee / sign_coaching_manager: e-signature flow for
+-- progressive-discipline coachings. Both bypass RLS intentionally (see
+-- the coachings policy above) and do their own authorization checks.
+
+create or replace function sign_coaching_employee(
+  p_coaching_id uuid, p_signature_name text, p_explanation text
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_coaching coachings%rowtype;
+  v_my_employee_id uuid;
+begin
+  select id into v_my_employee_id from employees where user_id = auth.uid() and is_active = true limit 1;
+  select * into v_coaching from coachings where id = p_coaching_id;
+
+  if v_coaching.id is null then
+    raise exception 'Coaching record not found';
+  end if;
+  if v_coaching.employee_id != v_my_employee_id then
+    raise exception 'Not authorized';
+  end if;
+  if trim(coalesce(p_explanation, '')) = '' then
+    raise exception 'An explanation is required';
+  end if;
+  if trim(coalesce(p_signature_name, '')) = '' then
+    raise exception 'A signature is required';
+  end if;
+
+  update coachings set
+    employee_explanation = p_explanation,
+    employee_signature_name = p_signature_name,
+    employee_signed_at = now(),
+    status = case when manager_signed_at is not null then 'completed' else status end
+  where id = p_coaching_id;
+end;
+$$;
+
+create or replace function sign_coaching_manager(
+  p_coaching_id uuid, p_signature_name text, p_escalation_action text default null
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_coaching coachings%rowtype;
+  v_my_employee_id uuid;
+begin
+  if not is_manager_or_above() then
+    raise exception 'Not authorized';
+  end if;
+  select id into v_my_employee_id from employees where user_id = auth.uid() and is_active = true limit 1;
+  select * into v_coaching from coachings where id = p_coaching_id;
+
+  if v_coaching.id is null then
+    raise exception 'Coaching record not found';
+  end if;
+  if v_coaching.location_id != get_my_location_id() then
+    raise exception 'Not authorized';
+  end if;
+  if trim(coalesce(p_signature_name, '')) = '' then
+    raise exception 'A signature is required';
+  end if;
+  if v_coaching.is_escalation and p_escalation_action not in ('final_written_warning', 'suspension_3day') then
+    raise exception 'This is a 3rd-strike coaching — select Final Written Warning or 3-Day Suspension before signing';
+  end if;
+
+  update coachings set
+    manager_id = v_my_employee_id,
+    manager_signature_name = p_signature_name,
+    manager_signed_at = now(),
+    escalation_action = case when is_escalation then p_escalation_action else escalation_action end,
+    suspension_start_date = case when is_escalation and p_escalation_action = 'suspension_3day' then current_date else suspension_start_date end,
+    suspension_end_date = case when is_escalation and p_escalation_action = 'suspension_3day' then current_date + 2 else suspension_end_date end,
+    status = case when employee_signed_at is not null then 'completed' else status end
+  where id = p_coaching_id;
+end;
+$$;
+
+-- ============================================================
+-- PLATFORM ADMIN (internal, not customer-facing)
+-- ============================================================
+-- platform_admins seeds its first row by direct SQL insert (there's no
+-- bootstrap path — admin_add_platform_admin requires an existing admin).
+
+create or replace function admin_add_platform_admin(p_email text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid;
+begin
+  if not is_platform_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  select id into v_uid from auth.users where email = p_email;
+  if v_uid is null then
+    raise exception 'No user found with that email — they need to sign up in the app first';
+  end if;
+
+  insert into platform_admins (user_id, email) values (v_uid, p_email)
+  on conflict (user_id) do nothing;
+end;
+$$;
+
+create or replace function admin_comp_plan(p_location_id uuid, p_tier text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_platform_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  update locations
+  set plan_tier = p_tier,
+      subscription_status = 'comped',
+      trial_ends_at = null
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_grant_trial(p_location_id uuid, p_days integer default 14, p_tier text default 'pro')
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_platform_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  update locations
+  set plan_tier = p_tier,
+      subscription_status = 'trialing',
+      trial_ends_at = now() + (p_days || ' days')::interval
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_reset_billing(p_location_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_platform_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  update locations
+  set plan_tier = 'starter',
+      subscription_status = 'inactive',
+      trial_ends_at = null
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_list_locations()
+returns table(
+  id uuid, name text, address text, plan_tier text, subscription_status text,
+  trial_ends_at timestamptz, created_at timestamptz, owner_email text,
+  owner_name text, active_employee_count bigint
+) language plpgsql security definer set search_path = public as $$
+begin
+  if not is_platform_admin() then
+    raise exception 'Not authorized';
+  end if;
+
+  return query
+  select
+    l.id, l.name, l.address, l.plan_tier, l.subscription_status, l.trial_ends_at, l.created_at,
+    u.email as owner_email,
+    e.display_name as owner_name,
+    (select count(*) from employees e2 where e2.location_id = l.id and e2.is_active) as active_employee_count
+  from locations l
+  left join employees e on e.location_id = l.id and e.role = 'owner'
+  left join auth.users u on u.id = l.owner_id
+  order by l.created_at desc;
+end;
+$$;
+
+-- ============================================================
+-- AUTO-ENABLE RLS ON NEW TABLES
+-- ============================================================
+-- Safety net: any future `create table` in the public schema gets RLS
+-- turned on automatically, so a forgotten `alter table ... enable row
+-- level security` can't ship a wide-open table.
+
+create or replace function rls_auto_enable()
+returns event_trigger language plpgsql security definer set search_path = pg_catalog as $$
+declare
+  cmd record;
+begin
+  for cmd in
+    select *
+    from pg_event_trigger_ddl_commands()
+    where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+      and object_type in ('table','partitioned table')
+  loop
+     if cmd.schema_name is not null and cmd.schema_name in ('public') then
+      begin
+        execute format('alter table if exists %s enable row level security', cmd.object_identity);
+        raise log 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+      exception
+        when others then
+          raise log 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+      end;
+     end if;
+  end loop;
+end;
+$$;
+
+drop event trigger if exists ensure_rls;
+create event trigger ensure_rls on ddl_command_end
+  when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+  execute function rls_auto_enable();
+
+-- ============================================================
+-- STORAGE — submission photos
+-- ============================================================
+-- Private bucket; read/write is gated by RLS-style policies on
+-- storage.objects rather than by making the bucket public, so access
+-- still requires an authenticated Supabase session.
+
+insert into storage.buckets (id, name, public)
+values ('submissions', 'submissions', false)
+on conflict (id) do nothing;
+
+create policy "storage_insert" on storage.objects for insert
+  with check (bucket_id = 'submissions' and auth.role() = 'authenticated');
+
+create policy "storage_select_authenticated" on storage.objects for select
+  using (bucket_id = 'submissions' and auth.role() = 'authenticated');
+
+-- ============================================================
+-- SCHEDULED JOBS (pg_cron)
+-- ============================================================
+-- These call the process-checks / daily-digest edge functions and the
+-- expire_stale_fixits() RPC directly from Postgres via pg_net, so the
+-- app keeps running its automation even if nothing external (e.g. the
+-- Vercel cron in vercel.json) is calling it.
+--
+-- process-checks and daily-digest currently have verify_jwt disabled
+-- (required for pg_net's headerless calls below to reach them) — which
+-- also means anyone who knows the URL can invoke them directly with no
+-- credentials. Consider adding a shared-secret header check inside both
+-- functions plus a matching header here if that's a concern.
+
+select cron.schedule(
+  'process-checks-every-15-min',
+  '*/15 * * * *',
+  $$
+  select net.http_post(
+    url := 'https://aahfydouyyrvrcubwoxa.supabase.co/functions/v1/process-checks',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := '{}'::jsonb
+  );
+  $$
+);
+
+select cron.schedule(
+  'proveit-daily-digest',
+  '0 12 * * *',
+  $$
+  select net.http_post(
+    url := 'https://aahfydouyyrvrcubwoxa.supabase.co/functions/v1/daily-digest',
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    body := '{}'::jsonb
+  );
+  $$
+);
+
+select cron.schedule(
+  'proveit-expire-fixits',
+  '*/5 * * * *',
+  $$select expire_stale_fixits();$$
+);

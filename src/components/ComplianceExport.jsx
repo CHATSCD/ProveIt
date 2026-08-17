@@ -205,7 +205,9 @@ export default function ComplianceExport({ onClose }) {
               if (ih > maxH) { ih = maxH; iw = maxH * aspect }
               try {
                 doc.addImage(imgData.data, 'JPEG', px, y + 11, iw, ih)
-              } catch {}
+              } catch {
+                // unsupported image format — skip this photo in the PDF
+              }
               px += iw + 4
             }
           }
