@@ -200,17 +200,21 @@ export default function AuthPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Role</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">I am...</label>
                 <select
                   value={regRole}
                   onChange={e => setRegRole(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl text-white text-sm outline-none"
                   style={{ background: '#111827', border: '1px solid #2d3748' }}
                 >
-                  <option value="employee">Employee</option>
-                  <option value="manager">Manager</option>
-                  <option value="owner">Owner</option>
+                  <option value="employee">Joining an existing team (Employee)</option>
+                  <option value="owner">Starting a new business (Owner)</option>
                 </select>
+                {regRole === 'employee' && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Your manager or owner can promote you to Manager later from the Staff page.
+                  </p>
+                )}
               </div>
               {regRole !== 'owner' && (
               <div>

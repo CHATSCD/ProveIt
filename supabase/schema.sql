@@ -189,10 +189,21 @@ create policy "loc_insert" on locations for insert with check (auth.uid() = owne
 create policy "loc_update" on locations for update using (auth.uid() = owner_id);
 
 -- employees
+-- emp_insert: public self-registration may only ever create an 'employee'
+-- row for yourself. Manager/owner are never self-assignable at signup —
+-- 'owner' is created exclusively via setup_owner_location()/
+-- create_additional_location() (SECURITY DEFINER, bypasses RLS), and
+-- 'manager' is granted only by an existing owner via emp_update below.
 create policy "emp_select_own" on employees for select using (user_id = auth.uid());
 create policy "emp_select_colleagues" on employees for select using (location_id = get_my_location_id());
-create policy "emp_insert" on employees for insert with check (user_id = auth.uid());
-create policy "emp_update" on employees for update using (location_id = get_my_location_id() and is_manager_or_above());
+create policy "emp_insert" on employees for insert
+  with check (user_id = auth.uid() and role = 'employee');
+-- emp_update: only the location's owner may change a colleague's role or
+-- active status — not "any manager" — and it can never promote anyone to
+-- 'owner' through this path (ownership transfer isn't exposed in the UI).
+create policy "emp_update" on employees for update
+  using (location_id = get_my_location_id() and is_owner())
+  with check (location_id = get_my_location_id() and role in ('employee', 'manager'));
 
 -- stations
 create policy "sta_select" on stations for select using (location_id = get_my_location_id());
@@ -279,6 +290,14 @@ returns boolean language sql stable security definer as $$
   select exists (
     select 1 from employees
     where user_id = auth.uid() and is_active = true and role in ('manager', 'owner')
+  );
+$$;
+
+create or replace function is_owner()
+returns boolean language sql stable security definer as $$
+  select exists (
+    select 1 from employees
+    where user_id = auth.uid() and is_active = true and role = 'owner'
   );
 $$;
 
