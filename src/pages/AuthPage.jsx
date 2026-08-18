@@ -3,12 +3,12 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Button } from '../components/ui'
 import { inputStyle, focusRing } from '../components/uiTokens'
-import { AlertCircle, CheckCircle2, Camera, MapPinned, Trophy, ChevronRight } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Camera, Zap, TrendingUp, ChevronRight } from 'lucide-react'
 
 const FEATURES = [
-  { icon: Camera, title: 'Photo-verified checks', desc: 'Employees scan a station QR code and submit live, timestamped photos — no gallery uploads.' },
-  { icon: MapPinned, title: 'Geotagged & scheduled', desc: 'Scheduled and surprise checks fire automatically, and every submission is geolocated.' },
-  { icon: Trophy, title: 'Ratings that matter', desc: 'Managers rate every submission; scores, coaching, and leaderboards happen automatically.' },
+  { icon: Camera, title: 'Photo-verified, every time', desc: 'No more "I did it." Employees scan a station and submit a live, timestamped photo — can\'t be faked, can\'t be backdated.' },
+  { icon: Zap, title: 'Scheduled + surprise checks', desc: 'Random spot-checks catch the moments that actually cost you money — not just when someone\'s watching.' },
+  { icon: TrendingUp, title: 'Turns into real savings', desc: 'Fewer empty shelves, less spoiled inventory, less manager time chasing down what didn\'t get done.' },
 ]
 
 export default function AuthPage() {
@@ -104,8 +104,9 @@ export default function AuthPage() {
             "I did it" isn't proof.<br />This is.
           </h2>
           <p className="mb-12" style={{ color: 'var(--text-muted)' }}>
-            Timestamped, geotagged, photo-verified food safety checks — with automatic
-            scoring your whole team can see.
+            Every task your team skips is money leaking out of the business — an empty
+            shelf, a cold hot bar, a cooler that drifted out of temp. ProveIt closes
+            the gap with photo-verified, timestamped proof that can't be faked.
           </p>
 
           <div className="space-y-6">
@@ -125,7 +126,7 @@ export default function AuthPage() {
         </div>
 
         <p className="relative text-xs" style={{ color: 'var(--text-faint)' }}>
-          ProveIt © {new Date().getFullYear()} — Food Safety Accountability
+          ProveIt © {new Date().getFullYear()} — Accountability That Pays for Itself
         </p>
       </div>
 
@@ -143,7 +144,7 @@ export default function AuthPage() {
               </svg>
             </div>
             <h1 className="text-4xl font-bold text-white" style={{ fontFamily: 'Syne, sans-serif' }}>ProveIt</h1>
-            <p className="mt-1 text-sm" style={{ color: 'var(--text-faint)' }}>Because "I did it" isn't good enough anymore.</p>
+            <p className="mt-1 text-sm" style={{ color: 'var(--text-faint)' }}>Photo-proof that the tasks protecting your profit actually got done.</p>
           </div>
 
           <div className="hidden lg:block mb-8">
@@ -324,7 +325,7 @@ export default function AuthPage() {
           </div>
 
           <p className="text-center text-xs mt-6 lg:hidden" style={{ color: 'var(--text-faint)' }}>
-            ProveIt © {new Date().getFullYear()} — Food Safety Accountability
+            ProveIt © {new Date().getFullYear()} — Accountability That Pays for Itself
           </p>
         </div>
       </div>
