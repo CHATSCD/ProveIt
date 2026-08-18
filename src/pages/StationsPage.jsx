@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { QRCodeSVG } from 'qrcode.react'
+import { Card, Badge, PageLoader, EmptyState, Button, PageHeader } from '../components/ui'
+import { inputStyle, focusRing } from '../components/uiTokens'
+import { Plus, QrCode, Pencil, User, Printer, X, MapPin } from 'lucide-react'
 
 const BASE_URL = window.location.origin
 
@@ -45,35 +48,35 @@ function QRModal({ station, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+         style={{ background: 'rgba(6,9,18,0.75)', backdropFilter: 'blur(6px)' }}
          onClick={onClose}>
-      <div className="rounded-2xl p-6 max-w-sm w-full text-center"
-           style={{ background: '#1a2235', border: '1px solid #2d3748' }}
+      <div className="rounded-2xl p-6 max-w-sm w-full text-center relative animate-in"
+           style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}
            onClick={e => e.stopPropagation()}>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-4 right-4 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+          style={{ color: 'var(--text-faint)' }}
+        >
+          <X size={16} />
+        </button>
         <h2 className="text-xl font-black text-white mb-1">{station.name}</h2>
-        <p className="text-gray-400 text-sm mb-4">Scan to submit a food check</p>
+        <p className="text-sm mb-4" style={{ color: 'var(--text-faint)' }}>Scan to submit a food check</p>
 
         <div className="bg-white p-4 rounded-xl inline-block mb-4" id="qr-print-target">
           <QRCodeSVG value={qrUrl} size={200} bgColor="#ffffff" fgColor="#0a0f1e" level="H" />
         </div>
 
-        <p className="text-xs text-gray-600 mb-4 break-all">{qrUrl}</p>
+        <p className="text-xs mb-4 break-all" style={{ color: 'var(--text-faint)' }}>{qrUrl}</p>
 
         <div className="flex gap-2">
-          <button
-            onClick={printQR}
-            className="flex-1 py-2.5 rounded-xl font-semibold text-sm text-white"
-            style={{ background: '#ff6b2b' }}
-          >
+          <Button className="flex-1" icon={Printer} onClick={printQR}>
             Print / Download
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl font-semibold text-sm"
-            style={{ background: '#374151', color: '#9ca3af' }}
-          >
+          </Button>
+          <Button className="flex-1" variant="secondary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -111,32 +114,33 @@ function StationForm({ station, onSave, onCancel, employees }) {
   }
 
   return (
-    <div className="rounded-2xl p-5 space-y-4" style={{ background: '#1a2235', border: '1px solid #ff6b2b' }}>
+    <Card className="space-y-4 animate-in" padding="p-5" style={{ borderColor: 'var(--accent)' }}>
       <h3 className="font-bold text-white">{station ? 'Edit Station' : 'New Station'}</h3>
 
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1">Station Name</label>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Station Name</label>
         <input
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="e.g. Pizza Bar, Deli Hot Case"
-          className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-          style={{ background: '#111827', border: '1px solid #2d3748' }}
+          className="w-full px-3 py-2.5 text-white text-sm outline-none"
+          style={inputStyle}
+          {...focusRing}
         />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1">Schedule Type</label>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Schedule Type</label>
         <div className="flex gap-2">
           {['scheduled', 'random'].map(type => (
             <button
               key={type}
               onClick={() => setScheduleType(type)}
-              className="flex-1 py-2 rounded-xl text-sm font-medium capitalize transition-all"
+              className="flex-1 py-2 rounded-xl text-sm font-medium capitalize transition-all duration-200"
               style={scheduleType === type
-                ? { background: 'rgba(255,107,43,0.2)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.4)' }
-                : { background: '#111827', color: '#9ca3af', border: '1px solid #2d3748' }}
+                ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.4)' }
+                : { ...inputStyle, color: 'var(--text-muted)' }}
             >
               {type}
             </button>
@@ -146,12 +150,13 @@ function StationForm({ station, onSave, onCancel, employees }) {
 
       {scheduleType === 'scheduled' && (
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Check Interval</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Check Interval</label>
           <select
             value={intervalMinutes}
             onChange={e => setIntervalMinutes(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-            style={{ background: '#111827', border: '1px solid #2d3748' }}
+            className="w-full px-3 py-2.5 text-white text-sm outline-none"
+            style={inputStyle}
+            {...focusRing}
           >
             <option value={60}>Every 1 hour</option>
             <option value={90}>Every 90 minutes</option>
@@ -164,12 +169,13 @@ function StationForm({ station, onSave, onCancel, employees }) {
 
       {scheduleType === 'random' && (
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">Minimum Gap Between Checks</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Minimum Gap Between Checks</label>
           <select
             value={minGapMinutes}
             onChange={e => setMinGapMinutes(e.target.value)}
-            className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-            style={{ background: '#111827', border: '1px solid #2d3748' }}
+            className="w-full px-3 py-2.5 text-white text-sm outline-none"
+            style={inputStyle}
+            {...focusRing}
           >
             <option value={30}>At least 30 minutes apart</option>
             <option value={60}>At least 1 hour apart</option>
@@ -181,25 +187,25 @@ function StationForm({ station, onSave, onCancel, employees }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
             {scheduleType === 'random' ? 'Surprise Window From' : 'Active From'}
           </label>
           <input type="time" value={windowStart} onChange={e => setWindowStart(e.target.value)}
-                 className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-                 style={{ background: '#111827', border: '1px solid #2d3748' }} />
+                 className="w-full px-3 py-2.5 text-white text-sm outline-none"
+                 style={inputStyle} {...focusRing} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-400 mb-1">
+          <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
             {scheduleType === 'random' ? 'Surprise Window Until' : 'Active Until'}
           </label>
           <input type="time" value={windowEnd} onChange={e => setWindowEnd(e.target.value)}
-                 className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-                 style={{ background: '#111827', border: '1px solid #2d3748' }} />
+                 className="w-full px-3 py-2.5 text-white text-sm outline-none"
+                 style={inputStyle} {...focusRing} />
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1">
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
           Submission Window: {submissionWindow} minutes
         </label>
         <input
@@ -209,18 +215,19 @@ function StationForm({ station, onSave, onCancel, employees }) {
           onChange={e => setSubmissionWindow(e.target.value)}
           className="w-full accent-orange-500"
         />
-        <div className="flex justify-between text-xs text-gray-600 mt-1">
+        <div className="flex justify-between text-xs mt-1" style={{ color: 'var(--text-faint)' }}>
           <span>10 min</span><span>30 min</span>
         </div>
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-400 mb-1">Assign to Employee</label>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Assign to Employee</label>
         <select
           value={assignedEmployeeId}
           onChange={e => setAssignedEmployeeId(e.target.value)}
-          className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-          style={{ background: '#111827', border: '1px solid #2d3748' }}
+          className="w-full px-3 py-2.5 text-white text-sm outline-none"
+          style={inputStyle}
+          {...focusRing}
         >
           <option value="">Anyone at this location</option>
           {employees.map(emp => (
@@ -230,18 +237,14 @@ function StationForm({ station, onSave, onCancel, employees }) {
       </div>
 
       <div className="flex gap-2 pt-2">
-        <button onClick={handleSave} disabled={saving || !name.trim()}
-                className="flex-1 py-2.5 rounded-xl font-bold text-sm text-white"
-                style={{ background: saving ? '#cc5522' : '#ff6b2b', cursor: saving ? 'not-allowed' : 'pointer' }}>
-          {saving ? 'Saving...' : 'Save Station'}
-        </button>
-        <button onClick={onCancel}
-                className="flex-1 py-2.5 rounded-xl font-medium text-sm"
-                style={{ background: '#374151', color: '#9ca3af' }}>
+        <Button className="flex-1" loading={saving} disabled={!name.trim()} onClick={handleSave}>
+          {saving ? 'Saving…' : 'Save Station'}
+        </Button>
+        <Button className="flex-1" variant="secondary" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }
 
@@ -331,21 +334,15 @@ export default function StationsPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Stations</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Manage food stations and QR codes</p>
-        </div>
-        {!showForm && (
-          <button
-            onClick={() => { setEditingStation(null); setShowForm(true) }}
-            className="px-4 py-2 rounded-xl font-semibold text-sm text-white"
-            style={{ background: '#ff6b2b' }}
-          >
-            + Add Station
-          </button>
+      <PageHeader
+        title="Stations"
+        description="Manage food stations and QR codes"
+        action={!showForm && (
+          <Button icon={Plus} onClick={() => { setEditingStation(null); setShowForm(true) }}>
+            Add Station
+          </Button>
         )}
-      </div>
+      />
 
       {showForm && (
         <div className="mb-6">
@@ -353,46 +350,28 @@ export default function StationsPage() {
             station={editingStation}
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditingStation(null) }}
-            locationId={locationId}
             employees={employees}
           />
         </div>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 rounded-full animate-spin"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-        </div>
+        <PageLoader />
       ) : stations.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-          <div className="text-4xl mb-3">◎</div>
-          <h3 className="text-white font-bold mb-1">No stations yet</h3>
-          <p className="text-gray-400 text-sm">Add your first food station to get started.</p>
-        </div>
+        <EmptyState icon={MapPin} title="No stations yet" description="Add your first food station to get started." />
       ) : (
         <div className="space-y-3">
           {stations.map(st => (
-            <div key={st.id} className="rounded-2xl p-4"
-                 style={{ background: '#1a2235', border: '1px solid #2d3748',
-                          opacity: st.is_active ? 1 : 0.6 }}>
+            <Card key={st.id} style={{ opacity: st.is_active ? 1 : 0.6 }}>
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-white">{st.name}</h3>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.is_active ? 'text-green-400' : 'text-gray-500'}`}
-                          style={{ background: st.is_active ? 'rgba(34,197,94,0.1)' : '#374151' }}>
-                      {st.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                    {st.schedule && (
-                      <span className="text-xs px-2 py-0.5 rounded-full capitalize"
-                            style={{ background: '#374151', color: '#9ca3af' }}>
-                        {st.schedule.type}
-                      </span>
-                    )}
+                    <Badge color={st.is_active ? 'green' : 'gray'}>{st.is_active ? 'Active' : 'Inactive'}</Badge>
+                    {st.schedule && <Badge color="gray" className="capitalize">{st.schedule.type}</Badge>}
                   </div>
                   {st.schedule && (
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs mt-1.5" style={{ color: 'var(--text-faint)' }}>
                       {st.schedule.type === 'scheduled'
                         ? `Every ${st.schedule.interval_minutes} min • `
                         : st.schedule.min_gap_minutes ? `Min ${st.schedule.min_gap_minutes} min gap • ` : ''}
@@ -400,43 +379,45 @@ export default function StationsPage() {
                       {' '}{st.schedule.submission_window_minutes} min window
                     </div>
                   )}
-                  <div className="text-xs mt-1" style={{ color: st.assigned_employee_id ? '#ff6b2b' : '#4b5563' }}>
+                  <div className="flex items-center gap-1.5 text-xs mt-1.5" style={{ color: st.assigned_employee_id ? 'var(--accent)' : 'var(--text-faint)' }}>
+                    <User size={12} />
                     {st.assigned_employee_id
                       ? `Assigned: ${employees.find(e => e.id === st.assigned_employee_id)?.display_name || 'Unknown'}`
                       : 'Unassigned — visible to all'}
                   </div>
-                  <div className="text-xs text-gray-600 mt-1 font-mono truncate">
+                  <div className="text-xs mt-1.5 font-mono truncate" style={{ color: 'var(--text-faint)' }}>
                     /check/{st.qr_code_token}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={QrCode}
                     onClick={() => setQrStation(st)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}
-                  >
-                    QR
-                  </button>
-                  <button
+                    style={{ background: 'var(--blue-soft)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}
+                    aria-label="Show QR code"
+                    className="!px-2.5"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    icon={Pencil}
                     onClick={() => { setEditingStation(st); setShowForm(true) }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: '#374151', color: '#9ca3af' }}
-                  >
-                    Edit
-                  </button>
-                  <button
+                    aria-label="Edit station"
+                    className="!px-2.5"
+                  />
+                  <Button
+                    size="sm"
+                    variant={st.is_active ? 'danger' : 'success'}
                     onClick={() => toggleActive(st)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={st.is_active
-                      ? { background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)' }
-                      : { background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
                   >
                     {st.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  </Button>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}

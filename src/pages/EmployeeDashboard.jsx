@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDistanceToNow, format, differenceInSeconds } from 'date-fns'
+import { Card, Badge, PageLoader } from '../components/ui'
+import { Zap, ClipboardList, Camera, CheckCircle2, X, ClipboardCheck } from 'lucide-react'
 
 function Countdown({ expiresAt }) {
   const [remaining, setRemaining] = useState(0)
@@ -22,21 +24,21 @@ function Countdown({ expiresAt }) {
   const pct = Math.min(100, (remaining / (15 * 60)) * 100)
   const urgent = remaining < 180 // under 3 min
 
-  if (remaining === 0) return <span className="text-red-400 text-sm font-bold">Expired</span>
+  if (remaining === 0) return <span className="text-sm font-bold" style={{ color: '#f87171' }}>Expired</span>
 
   return (
     <div className="flex items-center gap-3">
       <div className="relative w-12 h-12">
         <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-          <circle cx="24" cy="24" r="20" fill="none" stroke="#1f2937" strokeWidth="4"/>
+          <circle cx="24" cy="24" r="20" fill="none" stroke="var(--border)" strokeWidth="4"/>
           <circle cx="24" cy="24" r="20" fill="none"
-                  stroke={urgent ? '#ef4444' : '#ff6b2b'} strokeWidth="4"
+                  stroke={urgent ? '#ef4444' : 'var(--accent)'} strokeWidth="4"
                   strokeDasharray={`${2 * Math.PI * 20}`}
                   strokeDashoffset={`${2 * Math.PI * 20 * (1 - pct / 100)}`}
-                  strokeLinecap="round"/>
+                  strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s linear' }}/>
         </svg>
         <span className="absolute inset-0 flex items-center justify-center text-xs font-bold"
-              style={{ color: urgent ? '#ef4444' : '#ff6b2b' }}>
+              style={{ color: urgent ? '#ef4444' : 'var(--accent)' }}>
           {mins}:{String(secs).padStart(2, '0')}
         </span>
       </div>
@@ -44,40 +46,45 @@ function Countdown({ expiresAt }) {
         <div className="text-sm font-semibold" style={{ color: urgent ? '#ef4444' : 'white' }}>
           {mins}m {secs}s remaining
         </div>
-        <div className="text-xs text-gray-500">Submit before window closes</div>
+        <div className="text-xs" style={{ color: 'var(--text-faint)' }}>Submit before window closes</div>
       </div>
     </div>
   )
 }
 
 function ActiveCheckCard({ check }) {
+  const isRandom = check.trigger_type === 'random'
   return (
-    <div className="rounded-2xl p-5"
-         style={{ background: '#1a2235', border: '1px solid rgba(255,107,43,0.4)',
-                  boxShadow: '0 0 20px rgba(255,107,43,0.1)' }}>
+    <div className="rounded-2xl p-5 animate-in"
+         style={{ background: 'var(--surface)', border: '1px solid rgba(255,107,43,0.4)',
+                  boxShadow: 'var(--shadow-glow)' }}>
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-1"
-               style={{ color: '#ff6b2b' }}>
-            {check.trigger_type === 'random' ? '⚡ Surprise Check!' : '📋 Scheduled Check'}
+          <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider mb-1"
+               style={{ color: 'var(--accent)' }}>
+            {isRandom ? <Zap size={13} strokeWidth={2.5} /> : <ClipboardList size={13} strokeWidth={2.5} />}
+            {isRandom ? 'Surprise Check!' : 'Scheduled Check'}
           </div>
           <h3 className="text-lg font-bold text-white">{check.stations?.name}</h3>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-faint)' }}>
             Triggered {formatDistanceToNow(new Date(check.triggered_at), { addSuffix: true })}
           </p>
         </div>
-        <div className="text-2xl">{check.trigger_type === 'random' ? '⚡' : '📋'}</div>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+          {isRandom ? <Zap size={18} /> : <ClipboardList size={18} />}
+        </div>
       </div>
 
       <Countdown expiresAt={check.expires_at} />
 
-      <div className="mt-4 pt-4" style={{ borderTop: '1px solid #2d3748' }}>
+      <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
         <Link
           to={`/check/${check.stations?.qr_code_token}`}
-          className="block w-full py-3 rounded-xl text-center font-bold text-white no-underline transition-all"
-          style={{ background: '#ff6b2b' }}
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-center font-bold text-white no-underline transition-all duration-200 active:scale-[0.98]"
+          style={{ background: 'var(--accent)', boxShadow: 'var(--shadow-glow)' }}
         >
-          📸 Go to Station & Submit Photos
+          <Camera size={18} strokeWidth={2.25} />
+          Go to Station & Submit Photos
         </Link>
       </div>
     </div>
@@ -85,10 +92,10 @@ function ActiveCheckCard({ check }) {
 }
 
 function ScoreBadge({ points }) {
-  const tier = points >= 500 ? { label: 'Elite', color: '#ff6b2b', bg: 'rgba(255,107,43,0.15)' }
-    : points >= 250 ? { label: 'Pro', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' }
-    : points >= 100 ? { label: 'Rising', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' }
-    : { label: 'Rookie', color: '#9ca3af', bg: 'rgba(107,114,128,0.15)' }
+  const tier = points >= 500 ? { label: 'Elite', color: 'var(--accent)', bg: 'var(--accent-soft)' }
+    : points >= 250 ? { label: 'Pro', color: '#3b82f6', bg: 'var(--blue-soft)' }
+    : points >= 100 ? { label: 'Rising', color: '#22c55e', bg: 'var(--green-soft)' }
+    : { label: 'Rookie', color: '#9ca3af', bg: 'var(--surface-2)' }
   return (
     <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ color: tier.color, background: tier.bg }}>
       {tier.label}
@@ -209,46 +216,42 @@ export default function EmployeeDashboard() {
     }
   }, [loadData, employee])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 rounded-full animate-spin mx-auto mb-3"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-          <p className="text-gray-400 text-sm">Loading your shift...</p>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <PageLoader label="Loading your shift…" />
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* New check alert banner */}
       {checkAlert && (
         <div
-          className="mb-4 rounded-2xl p-4 flex items-center justify-between"
+          className="mb-4 rounded-2xl p-4 flex items-center justify-between animate-in"
           style={{
-            background: 'rgba(255,107,43,0.12)',
+            background: 'var(--accent-soft)',
             border: '1px solid rgba(255,107,43,0.5)',
-            boxShadow: '0 0 24px rgba(255,107,43,0.15)',
+            boxShadow: 'var(--shadow-glow)',
           }}
         >
           <div className="flex items-center gap-3">
-            <span className="text-xl">📋</span>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,107,43,0.15)', color: 'var(--accent)' }}>
+              <ClipboardList size={17} />
+            </div>
             <div>
               <div className="font-bold text-white text-sm">
                 New check at {checkAlert.stationName}
               </div>
-              <div className="text-xs text-gray-400 mt-0.5">
+              <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
                 Submit before the window closes
               </div>
             </div>
           </div>
           <button
             onClick={() => setCheckAlert(null)}
-            className="text-gray-500 hover:text-gray-300 text-lg leading-none ml-3"
+            aria-label="Dismiss"
+            className="flex-shrink-0 ml-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+            style={{ color: 'var(--text-faint)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'var(--surface-2)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-faint)'; e.currentTarget.style.background = 'transparent' }}
           >
-            ×
+            <X size={16} />
           </button>
         </div>
       )}
@@ -257,15 +260,15 @@ export default function EmployeeDashboard() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">
-            Hey, {employee?.display_name?.split(' ')[0]} 👋
+            Hey, {employee?.display_name?.split(' ')[0]}
           </h1>
-          <p className="text-gray-400 text-sm mt-0.5">{format(new Date(), 'EEEE, MMMM d')}</p>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-faint)' }}>{format(new Date(), 'EEEE, MMMM d')}</p>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-black" style={{ color: '#ff6b2b', fontFamily: 'Syne, sans-serif' }}>
+          <div className="text-3xl font-black" style={{ color: 'var(--accent)', fontFamily: 'Syne, sans-serif' }}>
             {shiftScore?.total_points ?? 0}
           </div>
-          <div className="text-xs text-gray-500">ShiftScore™</div>
+          <div className="text-xs" style={{ color: 'var(--text-faint)' }}>ShiftScore™</div>
           {shiftScore && <ScoreBadge points={shiftScore.total_points} />}
         </div>
       </div>
@@ -277,12 +280,12 @@ export default function EmployeeDashboard() {
             { label: 'On Time', value: shiftScore.on_time_count, color: '#22c55e' },
             { label: 'Late', value: shiftScore.late_count, color: '#f59e0b' },
             { label: 'Missed', value: shiftScore.missed_count, color: '#ef4444' },
-            { label: 'Rank', value: leaderboardRank ? `#${leaderboardRank}` : '—', color: '#ff6b2b' },
+            { label: 'Rank', value: leaderboardRank ? `#${leaderboardRank}` : '—', color: 'var(--accent)' },
           ].map((s, i) => (
-            <div key={i} className="rounded-xl p-3 text-center" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
+            <Card key={i} className="text-center" padding="p-3">
               <div className="font-bold" style={{ color: s.color }}>{s.value}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
-            </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>{s.label}</div>
+            </Card>
           ))}
         </div>
       )}
@@ -291,7 +294,10 @@ export default function EmployeeDashboard() {
       {activeChecks.length > 0 ? (
         <div className="mb-6">
           <h2 className="text-base font-bold text-white mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#ff6b2b' }}></span>
+            <span className="relative flex w-2 h-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: 'var(--accent)' }}></span>
+              <span className="relative inline-flex rounded-full w-2 h-2" style={{ background: 'var(--accent)' }}></span>
+            </span>
             Active Check Requests ({activeChecks.length})
           </h2>
           <div className="space-y-3">
@@ -301,34 +307,37 @@ export default function EmployeeDashboard() {
           </div>
         </div>
       ) : (
-        <div className="mb-6 rounded-2xl p-8 text-center"
-             style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-          <div className="text-3xl mb-2">✓</div>
+        <Card className="mb-6 text-center py-8">
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: 'var(--green-soft)', color: '#4ade80' }}>
+            <CheckCircle2 size={22} />
+          </div>
           <h3 className="text-white font-bold mb-1">All Clear</h3>
-          <p className="text-gray-400 text-sm">No active checks right now. You'll be notified when one comes in.</p>
-        </div>
+          <p className="text-sm" style={{ color: 'var(--text-faint)' }}>No active checks right now. You'll be notified when one comes in.</p>
+        </Card>
       )}
 
       {/* Recent submissions */}
       {recentSubmissions.length > 0 && (
         <div>
-          <h2 className="text-base font-bold text-white mb-3">Recent Submissions</h2>
+          <h2 className="text-base font-bold text-white mb-3 flex items-center gap-2">
+            <ClipboardCheck size={16} style={{ color: 'var(--text-faint)' }} />
+            Recent Submissions
+          </h2>
           <div className="space-y-2">
             {recentSubmissions.map(sub => (
-              <div key={sub.id} className="rounded-xl p-4 flex items-center gap-3"
-                   style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
+              <Card key={sub.id} className="flex items-center gap-3" padding="p-4">
                 {/* Thumbnail */}
                 {sub.photo_urls?.[0] && (
                   <img src={sub.photo_urls[0]} alt="" className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                       style={{ border: '1px solid #2d3748' }} />
+                       style={{ border: '1px solid var(--border)' }} />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-white truncate">
                     {sub.check_requests?.stations?.name || 'Station'}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs" style={{ color: 'var(--text-faint)' }}>
                     {format(new Date(sub.submitted_at), 'MMM d, h:mm a')}
-                    {sub.is_late && <span className="ml-2 text-yellow-500">• Late</span>}
+                    {sub.is_late && <span className="ml-2" style={{ color: '#fbbf24' }}>• Late</span>}
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -337,15 +346,13 @@ export default function EmployeeDashboard() {
                       <div className="font-bold text-lg" style={{ color: sub.manager_rating_total >= 13 ? '#22c55e' : sub.manager_rating_total >= 9 ? '#f59e0b' : '#ef4444' }}>
                         {sub.manager_rating_total}/15
                       </div>
-                      <div className="text-xs text-gray-500">Rated</div>
+                      <div className="text-xs" style={{ color: 'var(--text-faint)' }}>Rated</div>
                     </>
                   ) : (
-                    <span className="text-xs px-2 py-1 rounded-full" style={{ background: '#374151', color: '#9ca3af' }}>
-                      Pending
-                    </span>
+                    <Badge color="gray">Pending</Badge>
                   )}
                 </div>
-              </div>
+              </Card>
             ))}
           </div>
         </div>

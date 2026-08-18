@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { differenceInSeconds, format } from 'date-fns'
+import { Button, PageLoader } from '../components/ui'
+import { Camera, X, Check, AlertTriangle, Clock, Zap, ClipboardList, MessageSquare } from 'lucide-react'
+
 // Simple UUID v4
 function generateId() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -27,31 +30,36 @@ function PhotoSlot({ index, photo, onCapture, onRemove }) {
   return (
     <div>
       {photo ? (
-        <div className="relative rounded-2xl overflow-hidden" style={{ aspectRatio: '4/3' }}>
+        <div className="relative rounded-2xl overflow-hidden animate-in" style={{ aspectRatio: '4/3' }}>
           <img src={photo.preview} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
           <button
             onClick={() => onRemove(index)}
-            className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
-            style={{ background: 'rgba(0,0,0,0.7)' }}
+            aria-label="Remove photo"
+            className="absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center text-white transition-colors"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }}
           >
-            ✕
+            <X size={16} strokeWidth={2.5} />
           </button>
-          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-lg text-xs font-bold text-white"
-               style={{ background: 'rgba(34,197,94,0.8)' }}>
-            ✓ Photo {index + 1}
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-white"
+               style={{ background: 'rgba(34,197,94,0.85)' }}>
+            <Check size={12} strokeWidth={3} /> Photo {index + 1}
           </div>
         </div>
       ) : (
         <button
           onClick={() => inputRef.current?.click()}
-          className="w-full rounded-2xl flex flex-col items-center justify-center gap-3 transition-all"
-          style={{ aspectRatio: '4/3', background: '#1a2235', border: '2px dashed #374151' }}
+          className="w-full rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-200 active:scale-[0.99]"
+          style={{ aspectRatio: '4/3', background: 'var(--surface)', border: '2px dashed var(--border)' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
         >
-          <span className="text-4xl">📷</span>
-          <span className="text-sm font-medium text-gray-400">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'var(--surface-2)', color: 'var(--text-faint)' }}>
+            <Camera size={22} strokeWidth={1.75} />
+          </div>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
             {index === 0 ? 'Required' : index === 1 ? 'Required' : 'Optional'} Photo {index + 1}
           </span>
-          <span className="text-xs text-gray-600">Tap to capture</span>
+          <span className="text-xs" style={{ color: 'var(--text-faint)' }}>Tap to capture</span>
           <input
             ref={inputRef}
             type="file"
@@ -285,43 +293,29 @@ export default function CheckPage() {
   }
 
   // ── Render states ───────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0f1e' }}>
-        <div className="text-center">
-          <div className="w-10 h-10 border-2 rounded-full animate-spin mx-auto mb-4"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-          <p className="text-gray-400">Verifying QR code...</p>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <PageLoader label="Verifying QR code…" />
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#0a0f1e' }}>
-        <div className="text-center max-w-sm">
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center max-w-sm animate-in">
           <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6"
-               style={{ background: 'rgba(34,197,94,0.15)', border: '2px solid rgba(34,197,94,0.3)' }}>
-            <span className="text-4xl">✓</span>
+               style={{ background: 'var(--green-soft)', border: '2px solid rgba(34,197,94,0.3)' }}>
+            <Check size={36} strokeWidth={2.5} style={{ color: '#4ade80' }} />
           </div>
           <h1 className="text-3xl font-black text-white mb-2">Submitted!</h1>
-          <p className="text-gray-400 mb-6">
+          <p className="mb-6" style={{ color: 'var(--text-faint)' }}>
             Your photos have been uploaded. Wait for your manager to rate them.
           </p>
-          <div className="rounded-xl p-4 mb-6" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-            <div className="text-sm text-gray-400">Station</div>
+          <div className="rounded-xl p-4 mb-6 text-left" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+            <div className="text-sm" style={{ color: 'var(--text-faint)' }}>Station</div>
             <div className="font-bold text-white">{station?.name}</div>
-            <div className="text-sm text-gray-400 mt-2">Submitted at</div>
+            <div className="text-sm mt-2" style={{ color: 'var(--text-faint)' }}>Submitted at</div>
             <div className="font-medium text-white">{format(new Date(), 'h:mm:ss a')}</div>
           </div>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="w-full py-3 rounded-xl font-bold text-white"
-            style={{ background: '#ff6b2b' }}
-          >
+          <Button className="w-full" size="lg" onClick={() => navigate('/dashboard')}>
             Back to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -329,15 +323,16 @@ export default function CheckPage() {
 
   if (error && !checkRequest) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#0a0f1e' }}>
-        <div className="text-center max-w-sm">
-          <div className="text-5xl mb-4">⚠️</div>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center max-w-sm animate-in">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--amber-soft)', color: '#fbbf24' }}>
+            <AlertTriangle size={30} strokeWidth={2} />
+          </div>
           <h2 className="text-xl font-bold text-white mb-2">Check Not Available</h2>
-          <p className="text-gray-400 mb-6">{error}</p>
-          <button onClick={() => navigate('/dashboard')} className="w-full py-3 rounded-xl font-bold text-white"
-                  style={{ background: '#ff6b2b' }}>
+          <p className="mb-6" style={{ color: 'var(--text-faint)' }}>{error}</p>
+          <Button className="w-full" size="lg" onClick={() => navigate('/dashboard')}>
             Go to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -345,15 +340,16 @@ export default function CheckPage() {
 
   if (expired) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: '#0a0f1e' }}>
-        <div className="text-center max-w-sm">
-          <div className="text-5xl mb-4">⏰</div>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center max-w-sm animate-in">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--surface-2)', color: 'var(--text-faint)' }}>
+            <Clock size={30} strokeWidth={2} />
+          </div>
           <h2 className="text-xl font-bold text-white mb-2">Check Window Expired</h2>
-          <p className="text-gray-400 mb-6">The submission window for this check has closed.</p>
-          <button onClick={() => navigate('/dashboard')} className="w-full py-3 rounded-xl font-bold text-white"
-                  style={{ background: '#ff6b2b' }}>
+          <p className="mb-6" style={{ color: 'var(--text-faint)' }}>The submission window for this check has closed.</p>
+          <Button className="w-full" size="lg" onClick={() => navigate('/dashboard')}>
             Go to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -362,24 +358,26 @@ export default function CheckPage() {
   const capturedCount = photos.filter(Boolean).length
   const mins = Math.floor(remaining / 60)
   const secs = remaining % 60
+  const isRandom = checkRequest?.trigger_type === 'random'
 
   return (
-    <div className="min-h-screen" style={{ background: '#0a0f1e' }}>
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="px-4 py-4" style={{ background: '#1a2235', borderBottom: '1px solid #2d3748' }}>
+      <div className="px-4 py-4" style={{ background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: '#ff6b2b' }}>
-              {checkRequest?.trigger_type === 'random' ? '⚡ Surprise Check' : '📋 Scheduled Check'}
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--accent)' }}>
+              {isRandom ? <Zap size={13} strokeWidth={2.5} /> : <ClipboardList size={13} strokeWidth={2.5} />}
+              {isRandom ? 'Surprise Check' : 'Scheduled Check'}
             </div>
             <h1 className="text-xl font-black text-white">{station?.name}</h1>
           </div>
           {remaining > 0 && (
             <div className="text-right">
-              <div className="font-mono font-bold text-xl" style={{ color: remaining < 180 ? '#ef4444' : '#ff6b2b' }}>
+              <div className="font-mono font-bold text-xl" style={{ color: remaining < 180 ? '#ef4444' : 'var(--accent)' }}>
                 {mins}:{String(secs).padStart(2, '0')}
               </div>
-              <div className="text-xs text-gray-500">remaining</div>
+              <div className="text-xs" style={{ color: 'var(--text-faint)' }}>remaining</div>
             </div>
           )}
         </div>
@@ -387,17 +385,19 @@ export default function CheckPage() {
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         {/* Instructions */}
-        <div className="rounded-xl p-4" style={{ background: 'rgba(255,107,43,0.08)', border: '1px solid rgba(255,107,43,0.2)' }}>
-          <p className="text-sm text-orange-200">
-            📸 <strong>Take 2–3 photos</strong> of the food station showing it is stocked, hot, and clean.
+        <div className="flex items-start gap-2.5 rounded-xl p-4" style={{ background: 'var(--accent-soft)', border: '1px solid rgba(255,107,43,0.2)' }}>
+          <Camera size={18} strokeWidth={2} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }} />
+          <p className="text-sm" style={{ color: '#fed7aa' }}>
+            <strong>Take 2–3 photos</strong> of the food station showing it is stocked, hot, and clean.
             Photos must be taken live with your camera — no gallery uploads.
           </p>
         </div>
 
         {/* Geolocation warning */}
         {geoError && (
-          <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24' }}>
-            ⚠️ {geoError}
+          <div className="flex items-start gap-2.5 rounded-xl p-3 text-sm" style={{ background: 'var(--amber-soft)', border: '1px solid rgba(245,158,11,0.3)', color: '#fbbf24' }}>
+            <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
+            {geoError}
           </div>
         )}
 
@@ -405,7 +405,7 @@ export default function CheckPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-white text-base">Photos</h2>
-            <span className="text-sm" style={{ color: capturedCount >= 2 ? '#22c55e' : '#9ca3af' }}>
+            <span className="text-sm" style={{ color: capturedCount >= 2 ? '#4ade80' : 'var(--text-muted)' }}>
               {capturedCount}/3 captured
             </span>
           </div>
@@ -424,44 +424,48 @@ export default function CheckPage() {
 
         {/* Note */}
         <div>
-          <label className="block text-sm font-medium text-gray-400 mb-2">Note (optional)</label>
+          <label className="flex items-center gap-1.5 text-sm font-medium mb-2" style={{ color: 'var(--text-muted)' }}>
+            <MessageSquare size={14} />
+            Note (optional)
+          </label>
           <textarea
             value={note}
             onChange={e => setNote(e.target.value)}
             placeholder="Any notes about the station condition..."
             rows={3}
-            className="w-full px-4 py-3 rounded-xl text-white text-sm resize-none outline-none"
-            style={{ background: '#1a2235', border: '1px solid #2d3748' }}
+            className="w-full px-4 py-3 rounded-xl text-white text-sm resize-none outline-none transition-colors"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+            onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)' }}
+            onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
           />
         </div>
 
         {/* Error */}
         {error && (
-          <div className="p-3 rounded-xl text-sm text-red-300"
-               style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <div className="flex items-start gap-2.5 p-3 rounded-xl text-sm animate-in" style={{ background: 'var(--red-soft)', border: '1px solid rgba(239,68,68,0.3)', color: '#fca5a5' }}>
+            <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" />
             {error}
           </div>
         )}
 
         {/* Submit */}
-        <button
+        <Button
+          className="w-full"
+          size="lg"
+          loading={submitting}
+          disabled={capturedCount < 2}
+          icon={!submitting && capturedCount >= 2 ? Check : undefined}
           onClick={handleSubmit}
-          disabled={submitting || capturedCount < 2}
-          className="w-full py-4 rounded-xl font-black text-white text-lg transition-all"
-          style={{
-            background: submitting || capturedCount < 2 ? '#374151' : '#ff6b2b',
-            cursor: submitting || capturedCount < 2 ? 'not-allowed' : 'pointer',
-          }}
+          style={{ padding: '16px 24px', fontSize: '1.0625rem', fontWeight: 800 }}
         >
-          {submitting ? (
-            <span className="flex items-center justify-center gap-3">
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-              Uploading...
-            </span>
-          ) : capturedCount < 2 ? `Take ${2 - capturedCount} more photo${2 - capturedCount > 1 ? 's' : ''}` : '✓ Submit Check'}
-        </button>
+          {submitting
+            ? 'Uploading…'
+            : capturedCount < 2
+              ? `Take ${2 - capturedCount} more photo${2 - capturedCount > 1 ? 's' : ''}`
+              : 'Submit Check'}
+        </Button>
 
-        <p className="text-center text-xs text-gray-600">
+        <p className="text-center text-xs" style={{ color: 'var(--text-faint)' }}>
           Submission will be geotagged and timestamped.
         </p>
       </div>

@@ -2,26 +2,22 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { format } from 'date-fns'
-
-const POINTS_TABLE = {
-  '13-15': 15,
-  '9-12': 8,
-  'below-9': 0,
-}
+import { Card, PageLoader, EmptyState, Button, PageHeader } from '../components/ui'
+import { MessageSquare, MapPin, X, Star, ClipboardCheck } from 'lucide-react'
 
 function StarRating({ value, onChange, max = 5, label }) {
   return (
     <div>
-      <div className="text-xs font-medium text-gray-400 mb-1.5">{label}</div>
+      <div className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
       <div className="flex gap-1.5">
         {Array.from({ length: max }, (_, i) => i + 1).map(star => (
           <button
             key={star}
             onClick={() => onChange(star)}
-            className="w-9 h-9 rounded-lg text-lg transition-all font-bold"
+            className="w-9 h-9 rounded-lg text-lg transition-all duration-150 font-bold active:scale-95"
             style={value >= star
-              ? { background: 'rgba(255,107,43,0.2)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.4)' }
-              : { background: '#374151', color: '#4b5563', border: '1px solid transparent' }}
+              ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.4)' }
+              : { background: 'var(--surface-2)', color: 'var(--text-faint)', border: '1px solid transparent' }}
           >
             {star}
           </button>
@@ -90,23 +86,23 @@ function SubmissionCard({ submission, onRated }) {
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden"
-         style={{ background: '#1a2235', border: `1px solid ${alreadyRated ? '#2d3748' : 'rgba(255,107,43,0.3)'}` }}>
+    <div className="rounded-2xl overflow-hidden animate-in"
+         style={{ background: 'var(--surface)', border: `1px solid ${alreadyRated ? 'var(--border)' : 'rgba(255,107,43,0.3)'}`, boxShadow: alreadyRated ? 'var(--shadow-sm)' : 'var(--shadow-glow)' }}>
       {/* Header */}
-      <div className="p-4 flex items-center justify-between" style={{ borderBottom: '1px solid #2d3748' }}>
-        <div>
-          <div className="font-bold text-white">{submission.check_requests?.stations?.name}</div>
-          <div className="text-xs text-gray-500 mt-0.5">
+      <div className="p-4 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="min-w-0">
+          <div className="font-bold text-white truncate">{submission.check_requests?.stations?.name}</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>
             {submission.employees?.display_name} • {format(new Date(submission.submitted_at), 'MMM d, h:mm a')}
-            {submission.is_late && <span className="ml-2 text-yellow-500 font-medium">• Late</span>}
+            {submission.is_late && <span className="ml-2 font-medium" style={{ color: '#fbbf24' }}>• Late</span>}
           </div>
         </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           {alreadyRated ? (
             <div className="font-black text-2xl" style={{ color: ratingColor }}>{total}/15</div>
           ) : (
-            <span className="text-xs px-2 py-1 rounded-full font-medium"
-                  style={{ background: 'rgba(255,107,43,0.15)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.3)' }}>
+            <span className="text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.3)' }}>
               Needs Rating
             </span>
           )}
@@ -117,28 +113,29 @@ function SubmissionCard({ submission, onRated }) {
       <div className="p-4">
         <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
           {submission.photo_urls?.map((url, i) => (
-            <button key={i} onClick={() => setLightboxUrl(url)} className="flex-shrink-0">
+            <button key={i} onClick={() => setLightboxUrl(url)} className="flex-shrink-0 transition-transform duration-200 hover:scale-[1.02]">
               <img
                 src={url}
                 alt={`Photo ${i + 1}`}
                 className="h-32 w-44 object-cover rounded-xl"
-                style={{ border: '1px solid #2d3748' }}
+                style={{ border: '1px solid var(--border)' }}
               />
             </button>
           ))}
         </div>
 
         {submission.employee_note && (
-          <div className="mb-4 p-3 rounded-xl text-sm text-gray-300"
-               style={{ background: '#111827', border: '1px solid #2d3748' }}>
-            💬 {submission.employee_note}
+          <div className="flex items-start gap-2 mb-4 p-3 rounded-xl text-sm" style={{ background: 'var(--inset)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+            <MessageSquare size={14} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--text-faint)' }} />
+            {submission.employee_note}
           </div>
         )}
 
         {/* Geolocation info */}
         {submission.geolocation_lat && (
-          <div className="mb-4 text-xs text-gray-600">
-            📍 {submission.geolocation_lat.toFixed(4)}, {submission.geolocation_lng.toFixed(4)}
+          <div className="flex items-center gap-1.5 mb-4 text-xs" style={{ color: 'var(--text-faint)' }}>
+            <MapPin size={12} />
+            {submission.geolocation_lat.toFixed(4)}, {submission.geolocation_lng.toFixed(4)}
           </div>
         )}
 
@@ -153,23 +150,21 @@ function SubmissionCard({ submission, onRated }) {
 
             {total > 0 && (
               <div className="flex items-center justify-between p-3 rounded-xl"
-                   style={{ background: '#111827', border: '1px solid #2d3748' }}>
-                <span className="text-sm text-gray-400">Total Score</span>
+                   style={{ background: 'var(--inset)', border: '1px solid var(--border)' }}>
+                <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Total Score</span>
                 <span className="font-black text-2xl" style={{ color: ratingColor }}>{total}/15</span>
               </div>
             )}
 
-            <button
+            <Button
+              className="w-full"
+              size="lg"
+              loading={saving}
+              disabled={!freshness || !stocked || !cleanliness}
               onClick={submitRating}
-              disabled={saving || !freshness || !stocked || !cleanliness}
-              className="w-full py-3 rounded-xl font-bold text-white transition-all"
-              style={{
-                background: saving || !freshness || !stocked || !cleanliness ? '#374151' : '#ff6b2b',
-                cursor: saving || !freshness || !stocked || !cleanliness ? 'not-allowed' : 'pointer',
-              }}
             >
-              {saving ? 'Saving...' : 'Submit Rating'}
-            </button>
+              {saving ? 'Saving…' : 'Submit Rating'}
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 mt-2">
@@ -178,9 +173,9 @@ function SubmissionCard({ submission, onRated }) {
               { label: 'Stocked', val: submission.manager_rating_stocked },
               { label: 'Cleanliness', val: submission.manager_rating_cleanliness },
             ].map(item => (
-              <div key={item.label} className="rounded-xl p-3 text-center" style={{ background: '#111827' }}>
+              <div key={item.label} className="rounded-xl p-3 text-center" style={{ background: 'var(--inset)' }}>
                 <div className="font-bold text-white">{item.val}/5</div>
-                <div className="text-xs text-gray-500">{item.label}</div>
+                <div className="text-xs" style={{ color: 'var(--text-faint)' }}>{item.label}</div>
               </div>
             ))}
           </div>
@@ -189,13 +184,15 @@ function SubmissionCard({ submission, onRated }) {
 
       {/* Lightbox */}
       {lightboxUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-             style={{ background: 'rgba(0,0,0,0.9)' }}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in"
+             style={{ background: 'rgba(6,9,18,0.92)' }}
              onClick={() => setLightboxUrl(null)}>
           <img src={lightboxUrl} alt="Full view" className="max-w-full max-h-full rounded-xl object-contain" />
-          <button className="absolute top-4 right-4 text-white text-2xl font-bold w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ background: 'rgba(0,0,0,0.5)' }}>
-            ✕
+          <button
+            aria-label="Close"
+            className="absolute top-4 right-4 text-white w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <X size={20} />
           </button>
         </div>
       )}
@@ -241,21 +238,19 @@ export default function SubmissionsPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Submissions</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Rate employee check submissions</p>
-        </div>
-        {unratedCount > 0 && (
+      <PageHeader
+        title="Submissions"
+        description="Rate employee check submissions"
+        action={unratedCount > 0 && (
           <div className="px-3 py-1.5 rounded-xl text-sm font-bold"
-               style={{ background: 'rgba(255,107,43,0.15)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.3)' }}>
+               style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.3)' }}>
             {unratedCount} pending
           </div>
         )}
-      </div>
+      />
 
       {/* Filter tabs */}
-      <div className="flex rounded-xl p-1 mb-6" style={{ background: '#111827' }}>
+      <div className="flex rounded-xl p-1 mb-6" style={{ background: 'var(--inset)' }}>
         {[
           { key: 'unrated', label: 'Needs Rating' },
           { key: 'all', label: 'All Submissions' },
@@ -263,10 +258,10 @@ export default function SubmissionsPage() {
           <button
             key={tab.key}
             onClick={() => setFilter(tab.key)}
-            className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
+            className="flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200"
             style={filter === tab.key
-              ? { background: '#ff6b2b', color: 'white' }
-              : { color: '#9ca3af' }}
+              ? { background: 'var(--accent)', color: 'white', boxShadow: 'var(--shadow-glow)' }
+              : { color: 'var(--text-muted)' }}
           >
             {tab.label}
           </button>
@@ -274,20 +269,13 @@ export default function SubmissionsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 rounded-full animate-spin"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-        </div>
+        <PageLoader />
       ) : submissions.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-          <div className="text-4xl mb-3">★</div>
-          <h3 className="text-white font-bold mb-1">
-            {filter === 'unrated' ? 'All caught up!' : 'No submissions yet'}
-          </h3>
-          <p className="text-gray-400 text-sm">
-            {filter === 'unrated' ? 'No submissions waiting to be rated.' : 'Employees haven\'t submitted any checks.'}
-          </p>
-        </div>
+        <EmptyState
+          icon={filter === 'unrated' ? ClipboardCheck : Star}
+          title={filter === 'unrated' ? 'All caught up!' : 'No submissions yet'}
+          description={filter === 'unrated' ? 'No submissions waiting to be rated.' : "Employees haven't submitted any checks."}
+        />
       ) : (
         <div className="space-y-4">
           {submissions.map(sub => (

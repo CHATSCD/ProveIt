@@ -2,24 +2,26 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { format, startOfWeek, endOfWeek } from 'date-fns'
+import { Card, PageLoader, EmptyState, Button } from '../components/ui'
+import { Trophy, CheckCircle2, Clock, XCircle, Star, Award } from 'lucide-react'
 
 const MEDAL = ['🥇', '🥈', '🥉']
 
 function RankBadge({ rank }) {
-  if (rank <= 3) return <span className="text-2xl">{MEDAL[rank - 1]}</span>
+  if (rank <= 3) return <span className="text-2xl leading-none">{MEDAL[rank - 1]}</span>
   return (
-    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm"
-         style={{ background: '#374151', color: '#9ca3af' }}>
+    <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+         style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
       #{rank}
     </div>
   )
 }
 
 function ScoreTier({ points }) {
-  const tier = points >= 500 ? { label: 'Elite', color: '#ff6b2b', bg: 'rgba(255,107,43,0.15)' }
-    : points >= 250 ? { label: 'Pro', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' }
-    : points >= 100 ? { label: 'Rising', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' }
-    : { label: 'Rookie', color: '#9ca3af', bg: 'rgba(107,114,128,0.15)' }
+  const tier = points >= 500 ? { label: 'Elite', color: 'var(--accent)', bg: 'var(--accent-soft)' }
+    : points >= 250 ? { label: 'Pro', color: '#3b82f6', bg: 'var(--blue-soft)' }
+    : points >= 100 ? { label: 'Rising', color: '#22c55e', bg: 'var(--green-soft)' }
+    : { label: 'Rookie', color: '#9ca3af', bg: 'var(--surface-2)' }
   return (
     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: tier.color, background: tier.bg }}>
       {tier.label}
@@ -74,43 +76,39 @@ export default function LeaderboardPage() {
       {/* Header */}
       <div className="text-center mb-6">
         <h1 className="text-2xl font-bold text-white mb-1">ShiftScore™ Leaderboard</h1>
-        <p className="text-gray-400 text-sm">
+        <p className="text-sm" style={{ color: 'var(--text-faint)' }}>
           Week of {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
         </p>
       </div>
 
       {/* My rank callout */}
       {myScore && (
-        <div className="mb-6 p-4 rounded-2xl flex items-center gap-4"
-             style={{ background: 'rgba(255,107,43,0.08)', border: '1px solid rgba(255,107,43,0.2)' }}>
+        <Card className="mb-6 flex items-center gap-4 animate-in" style={{ background: 'var(--accent-soft)', borderColor: 'rgba(255,107,43,0.2)' }}>
           <RankBadge rank={myRank} />
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="font-bold text-white">Your Position</div>
-            <div className="text-sm text-gray-400">
+            <div className="text-sm" style={{ color: 'var(--text-faint)' }}>
               {myScore.total_points} pts • {myScore.on_time_count} on time • {myScore.missed_count} missed
             </div>
           </div>
-          <div>
-            <div className="text-3xl font-black" style={{ color: '#ff6b2b', fontFamily: 'Syne, sans-serif' }}>
+          <div className="text-right flex-shrink-0">
+            <div className="text-3xl font-black" style={{ color: 'var(--accent)', fontFamily: 'Syne, sans-serif' }}>
               {myScore.total_points}
             </div>
             <ScoreTier points={myScore.total_points} />
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Leaderboard */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 rounded-full animate-spin"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-        </div>
+        <PageLoader />
       ) : scores.length === 0 ? (
-        <div className="text-center py-16 rounded-2xl" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-          <div className="text-4xl mb-3">▲</div>
-          <h3 className="text-white font-bold mb-1">No scores yet this week</h3>
-          <p className="text-gray-400 text-sm">Complete some food checks to appear on the leaderboard!</p>
-        </div>
+        <EmptyState
+          icon={Trophy}
+          title="No scores yet this week"
+          description="Complete some food checks to appear on the leaderboard!"
+        />
       ) : (
         <div className="space-y-2">
           {scores.map((score, i) => {
@@ -119,12 +117,12 @@ export default function LeaderboardPage() {
             const isFirst = rank === 1
 
             return (
-              <div
+              <Card
                 key={score.id}
-                className="rounded-2xl p-4 flex items-center gap-3 transition-all"
+                className="flex items-center gap-3"
                 style={{
-                  background: isMe ? 'rgba(255,107,43,0.08)' : '#1a2235',
-                  border: isFirst ? '1px solid rgba(255,215,0,0.3)' : isMe ? '1px solid rgba(255,107,43,0.3)' : '1px solid #2d3748',
+                  background: isMe ? 'var(--accent-soft)' : 'var(--surface)',
+                  borderColor: isFirst ? 'rgba(251,191,36,0.35)' : isMe ? 'rgba(255,107,43,0.3)' : 'var(--border)',
                 }}
               >
                 <RankBadge rank={rank} />
@@ -132,41 +130,43 @@ export default function LeaderboardPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-white">{score.employees?.display_name}</span>
-                    {isMe && <span className="text-xs text-orange-400 font-medium">you</span>}
+                    {isMe && <span className="text-xs font-medium" style={{ color: 'var(--accent)' }}>you</span>}
                     <ScoreTier points={score.total_points} />
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5 flex gap-3">
-                    <span className="text-green-500">✓ {score.on_time_count} on time</span>
-                    {score.late_count > 0 && <span className="text-yellow-500">⏰ {score.late_count} late</span>}
-                    {score.missed_count > 0 && <span className="text-red-500">✗ {score.missed_count} missed</span>}
-                    {score.avg_rating > 0 && <span className="text-gray-400">★ {score.avg_rating.toFixed(1)} avg</span>}
+                  <div className="text-xs mt-1 flex gap-3 flex-wrap" style={{ color: 'var(--text-faint)' }}>
+                    <span className="inline-flex items-center gap-1" style={{ color: '#4ade80' }}><CheckCircle2 size={12} />{score.on_time_count} on time</span>
+                    {score.late_count > 0 && <span className="inline-flex items-center gap-1" style={{ color: '#fbbf24' }}><Clock size={12} />{score.late_count} late</span>}
+                    {score.missed_count > 0 && <span className="inline-flex items-center gap-1" style={{ color: '#f87171' }}><XCircle size={12} />{score.missed_count} missed</span>}
+                    {score.avg_rating > 0 && <span className="inline-flex items-center gap-1"><Star size={12} />{score.avg_rating.toFixed(1)} avg</span>}
                   </div>
                 </div>
 
-                <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
+                <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
                   <div className="text-xl font-black" style={{ color: isFirst ? '#fbbf24' : 'white', fontFamily: 'Syne, sans-serif' }}>
                     {score.total_points}
                   </div>
-                  <div className="text-xs text-gray-600">pts</div>
+                  <div className="text-xs" style={{ color: 'var(--text-faint)' }}>pts</div>
                   {isManager && rank === 1 && (
-                    <button
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={Award}
+                      loading={savingWinner}
                       onClick={() => markWinner(score)}
-                      disabled={savingWinner}
-                      className="text-xs px-2 py-0.5 rounded-full font-medium"
-                      style={{ background: 'rgba(251,191,36,0.15)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
+                      style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.3)' }}
                     >
-                      🏆 Award
-                    </button>
+                      Award
+                    </Button>
                   )}
                 </div>
-              </div>
+              </Card>
             )
           })}
         </div>
       )}
 
       {/* Points guide */}
-      <div className="mt-8 rounded-2xl p-5" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
+      <Card className="mt-8" padding="p-5">
         <h3 className="font-bold text-white mb-3">Points Guide</h3>
         <div className="space-y-2 text-sm">
           {[
@@ -179,12 +179,12 @@ export default function LeaderboardPage() {
             { label: 'Missed check', pts: '-15', color: '#ef4444' },
           ].map((row, i) => (
             <div key={i} className="flex justify-between items-center">
-              <span className="text-gray-400">{row.label}</span>
+              <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
               <span className="font-bold" style={{ color: row.color }}>{row.pts}</span>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   )
 }

@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { format } from 'date-fns'
 import { jsPDF } from 'jspdf'
+import { Button, Spinner } from './ui'
+import { inputStyle, focusRing } from './uiTokens'
+import { X, Download } from 'lucide-react'
 
 async function getImgData(url) {
   return new Promise(resolve => {
@@ -256,48 +259,55 @@ export default function ComplianceExport({ onClose }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(6,9,18,0.75)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}
     >
       <div
-        className="rounded-2xl p-6 w-full max-w-md"
-        style={{ background: '#1a2235', border: '1px solid #2d3748' }}
+        className="rounded-2xl p-6 w-full max-w-md relative animate-in"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-1">
-          <h2 className="text-xl font-black text-white">Export Compliance Report</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-xl leading-none">×</button>
-        </div>
-        <p className="text-gray-400 text-sm mb-5">
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-5 right-5 w-7 h-7 rounded-full flex items-center justify-center transition-colors"
+          style={{ color: 'var(--text-faint)' }}
+        >
+          <X size={16} />
+        </button>
+        <h2 className="text-xl font-black text-white mb-1 pr-8">Export Compliance Report</h2>
+        <p className="text-sm mb-5" style={{ color: 'var(--text-faint)' }}>
           Download a PDF with all submissions, photos, and ratings — ready for health inspections.
         </p>
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">From</label>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>From</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-                style={{ background: '#111827', border: '1px solid #2d3748' }}
+                className="w-full px-3 py-2.5 text-white text-sm outline-none"
+                style={inputStyle}
+                {...focusRing}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">To</label>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>To</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-                style={{ background: '#111827', border: '1px solid #2d3748' }}
+                className="w-full px-3 py-2.5 text-white text-sm outline-none"
+                style={inputStyle}
+                {...focusRing}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1">
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
               Manager signature name
             </label>
             <input
@@ -305,40 +315,26 @@ export default function ComplianceExport({ onClose }) {
               value={signerName}
               onChange={e => setSignerName(e.target.value)}
               placeholder="Your name"
-              className="w-full px-3 py-2.5 rounded-xl text-white text-sm outline-none"
-              style={{ background: '#111827', border: '1px solid #2d3748' }}
+              className="w-full px-3 py-2.5 text-white text-sm outline-none"
+              style={inputStyle}
+              {...focusRing}
             />
           </div>
 
           {generating && progress && (
-            <div className="text-sm text-center py-2" style={{ color: '#ff6b2b' }}>
-              <div
-                className="w-5 h-5 border-2 rounded-full animate-spin mx-auto mb-2"
-                style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}
-              ></div>
+            <div className="flex items-center justify-center gap-2.5 text-sm py-2" style={{ color: 'var(--accent)' }}>
+              <Spinner size={16} />
               {progress}
             </div>
           )}
 
           <div className="flex gap-2 pt-1">
-            <button
-              onClick={generate}
-              disabled={generating}
-              className="flex-1 py-3 rounded-xl font-bold text-sm text-white"
-              style={{
-                background: generating ? '#374151' : '#ff6b2b',
-                cursor: generating ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {generating ? 'Generating...' : '⬇ Download PDF'}
-            </button>
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 rounded-xl font-medium text-sm"
-              style={{ background: '#374151', color: '#9ca3af' }}
-            >
+            <Button className="flex-1" loading={generating} icon={!generating ? Download : undefined} onClick={generate}>
+              {generating ? 'Generating…' : 'Download PDF'}
+            </Button>
+            <Button className="flex-1" variant="secondary" onClick={onClose}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </div>

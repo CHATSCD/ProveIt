@@ -4,20 +4,22 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDistanceToNow, format } from 'date-fns'
 import ComplianceExport from '../components/ComplianceExport'
+import { Card, Badge, PageLoader, EmptyState, Button } from '../components/ui'
+import { Download, RefreshCw, Zap, Trophy, MapPin, Clock, CheckCircle2, AlertTriangle, Hourglass } from 'lucide-react'
+
+const STATUS_CONFIG = {
+  submitted: { color: '#22c55e', border: 'rgba(34,197,94,0.3)', label: 'Submitted', icon: CheckCircle2 },
+  pending: { color: '#f59e0b', border: 'rgba(245,158,11,0.3)', label: 'Pending', icon: Hourglass },
+  missed: { color: '#ef4444', border: 'rgba(239,68,68,0.3)', label: 'Missed', icon: AlertTriangle },
+  no_data: { color: '#6b7280', border: 'var(--border)', label: 'No Data', icon: Clock },
+}
 
 function StationStatusCard({ station, onTriggerCheck }) {
   const [triggering, setTriggering] = useState(false)
 
   const lastCheck = station.last_check
   const status = lastCheck?.status || 'no_data'
-
-  const statusConfig = {
-    submitted: { color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.3)', label: 'Submitted', dot: '#22c55e' },
-    pending: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)', label: 'Pending', dot: '#f59e0b' },
-    missed: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.3)', label: 'Missed', dot: '#ef4444' },
-    no_data: { color: '#6b7280', bg: 'rgba(107,114,128,0.1)', border: 'rgba(107,114,128,0.3)', label: 'No Data', dot: '#6b7280' },
-  }
-  const cfg = statusConfig[status] || statusConfig.no_data
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.no_data
 
   async function triggerCheck() {
     setTriggering(true)
@@ -29,32 +31,31 @@ function StationStatusCard({ station, onTriggerCheck }) {
   }
 
   return (
-    <div className="rounded-2xl p-5 flex flex-col gap-4"
-         style={{ background: '#1a2235', border: `1px solid ${cfg.border}` }}>
+    <Card className="flex flex-col gap-4" padding="p-5" style={{ borderColor: cfg.border }}>
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-bold text-white text-lg">{station.name}</h3>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-2 h-2 rounded-full" style={{ background: cfg.dot }}></span>
-            <span className="text-sm font-medium" style={{ color: cfg.color }}>{cfg.label}</span>
-            {!station.is_active && (
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: '#374151', color: '#9ca3af' }}>
-                Inactive
-              </span>
-            )}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-bold text-white text-lg truncate">{station.name}</h3>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1.5 text-sm font-medium" style={{ color: cfg.color }}>
+              <cfg.icon size={14} strokeWidth={2.5} />
+              {cfg.label}
+            </span>
+            {!station.is_active && <Badge color="gray">Inactive</Badge>}
           </div>
         </div>
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={Zap}
+          loading={triggering}
+          disabled={!station.is_active}
           onClick={triggerCheck}
-          disabled={triggering || !station.is_active}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex-shrink-0"
-          style={triggering || !station.is_active
-            ? { background: '#374151', color: '#6b7280', cursor: 'not-allowed' }
-            : { background: 'rgba(255,107,43,0.15)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.3)' }}
+          className="flex-shrink-0"
+          style={!triggering && station.is_active ? { background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.3)' } : {}}
         >
-          {triggering ? 'Triggering...' : '+ Manual Check'}
-        </button>
+          {triggering ? 'Triggering' : 'Manual Check'}
+        </Button>
       </div>
 
       {/* Last submission photo */}
@@ -65,8 +66,8 @@ function StationStatusCard({ station, onTriggerCheck }) {
               key={i}
               src={url}
               alt="Station photo"
-              className="h-20 w-28 object-cover rounded-lg flex-shrink-0"
-              style={{ border: '1px solid #2d3748' }}
+              className="h-20 w-28 object-cover rounded-lg flex-shrink-0 transition-transform duration-200 hover:scale-105"
+              style={{ border: '1px solid var(--border)' }}
             />
           ))}
         </div>
@@ -74,13 +75,13 @@ function StationStatusCard({ station, onTriggerCheck }) {
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl p-3 text-center" style={{ background: '#111827' }}>
+        <div className="rounded-xl p-3 text-center" style={{ background: 'var(--inset)' }}>
           <div className="text-lg font-bold text-white">
             {lastCheck?.submission?.manager_rating_total ?? '—'}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">Last Score</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>Last Score</div>
         </div>
-        <div className="rounded-xl p-3 text-center" style={{ background: '#111827' }}>
+        <div className="rounded-xl p-3 text-center" style={{ background: 'var(--inset)' }}>
           <div className="text-sm font-bold text-white">
             {lastCheck?.submitted_at
               ? formatDistanceToNow(new Date(lastCheck.submitted_at), { addSuffix: true })
@@ -88,34 +89,30 @@ function StationStatusCard({ station, onTriggerCheck }) {
               ? formatDistanceToNow(new Date(lastCheck.triggered_at), { addSuffix: true })
               : '—'}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">Last Activity</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>Last Activity</div>
         </div>
-        <div className="rounded-xl p-3 text-center" style={{ background: '#111827' }}>
-          <div className="text-sm font-bold" style={{ color: '#ff6b2b' }}>
+        <div className="rounded-xl p-3 text-center" style={{ background: 'var(--inset)' }}>
+          <div className="text-sm font-bold" style={{ color: 'var(--accent)' }}>
             {station.schedule?.interval_minutes
               ? `${station.schedule.interval_minutes}m`
               : '—'}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">Interval</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-faint)' }}>Interval</div>
         </div>
       </div>
 
       {/* Employee info */}
       {lastCheck?.submission?.employee && (
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
           <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-               style={{ background: '#374151', color: '#ff6b2b' }}>
+               style={{ background: 'var(--surface-2)', color: 'var(--accent)' }}>
             {lastCheck.submission.employee.display_name?.[0]?.toUpperCase()}
           </div>
           <span>{lastCheck.submission.employee.display_name}</span>
-          {lastCheck.submission.is_late && (
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-              Late
-            </span>
-          )}
+          {lastCheck.submission.is_late && <Badge color="amber">Late</Badge>}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
@@ -233,18 +230,6 @@ export default function ManagerDashboard() {
     return () => supabase.removeChannel(channel)
   }, [loadData])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-64">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"
-               style={{ borderColor: '#ff6b2b', borderTopColor: 'transparent' }}></div>
-          <p className="text-gray-400 text-sm">Loading dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
   async function handleTriggerCheck(stationId) {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000)
     await supabase.from('check_requests').insert({
@@ -258,85 +243,84 @@ export default function ManagerDashboard() {
     await loadData()
   }
 
+  if (loading) return <PageLoader label="Loading dashboard…" />
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Live Dashboard</h1>
-          <p className="text-gray-400 text-sm mt-0.5">
+          <p className="text-sm mt-0.5" style={{ color: 'var(--text-faint)' }}>
             {employee?.locations?.name || 'All Stations'} • {format(new Date(), 'EEEE, MMMM d')}
           </p>
         </div>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Download}
             onClick={() => setShowExport(true)}
-            className="px-3 py-2 rounded-xl text-sm font-semibold transition-all"
-            style={{ background: 'rgba(255,107,43,0.15)', color: '#ff6b2b', border: '1px solid rgba(255,107,43,0.3)' }}
+            style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid rgba(255,107,43,0.3)' }}
           >
-            ⬇ Export
-          </button>
-          <button
-            onClick={loadData}
-            className="px-3 py-2 rounded-xl text-sm font-medium transition-all"
-            style={{ background: '#1f2937', color: '#9ca3af', border: '1px solid #2d3748' }}
-          >
-            ↻ Refresh
-          </button>
+            Export
+          </Button>
+          <Button variant="ghost" size="sm" icon={RefreshCw} onClick={loadData}>
+            Refresh
+          </Button>
         </div>
       </div>
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: "Today's Checks", value: todayStats.total, color: '#9ca3af' },
+          { label: "Today's Checks", value: todayStats.total, color: 'var(--text-muted)' },
           { label: 'On Time', value: todayStats.onTime, color: '#22c55e' },
-          { label: 'Missed', value: todayStats.missed, color: '#ef4444', alert: todayStats.missed > 0 },
+          { label: 'Missed', value: todayStats.missed, color: '#ef4444' },
           { label: 'Pending Rating', value: pendingRatings, color: '#f59e0b', link: pendingRatings > 0 ? '/submissions' : null },
-        ].map((stat, i) => (
-          <div key={i} className="rounded-xl p-4" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
-            {stat.link ? (
-              <Link to={stat.link} className="no-underline">
-                <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
-                <div className="text-xs text-gray-500 mt-1">{stat.label}</div>
-              </Link>
-            ) : (
-              <>
-                <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
-                <div className="text-xs text-gray-500 mt-1">{stat.label}</div>
-              </>
-            )}
-          </div>
-        ))}
+        ].map((stat, i) => {
+          const content = (
+            <>
+              <div className="text-2xl font-bold" style={{ color: stat.color }}>{stat.value}</div>
+              <div className="text-xs mt-1" style={{ color: 'var(--text-faint)' }}>{stat.label}</div>
+            </>
+          )
+          return (
+            <Card key={i} hoverable={!!stat.link}>
+              {stat.link ? <Link to={stat.link} className="no-underline block">{content}</Link> : content}
+            </Card>
+          )
+        })}
       </div>
 
       {/* Top performer */}
       {topPerformer && (
-        <div className="mb-6 p-4 rounded-xl flex items-center gap-4"
-             style={{ background: 'rgba(255,107,43,0.08)', border: '1px solid rgba(255,107,43,0.2)' }}>
-          <div className="text-2xl">🏆</div>
+        <Card className="mb-6 flex items-center gap-4" style={{ background: 'var(--accent-soft)', borderColor: 'rgba(255,107,43,0.2)' }}>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(255,107,43,0.15)', color: 'var(--accent)' }}>
+            <Trophy size={22} strokeWidth={2} />
+          </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#ff6b2b' }}>
+            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>
               This Week's Top Performer
             </div>
             <div className="text-white font-bold">{topPerformer.employees?.display_name}</div>
-            <div className="text-sm text-gray-400">{topPerformer.total_points} pts</div>
+            <div className="text-sm" style={{ color: 'var(--text-faint)' }}>{topPerformer.total_points} pts</div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Station cards */}
       {stations.length === 0 ? (
-        <div className="text-center py-16">
-          <div className="text-4xl mb-4">◎</div>
-          <h2 className="text-white font-bold mb-2">No stations yet</h2>
-          <p className="text-gray-400 text-sm mb-4">Create your first food station to get started.</p>
-          <Link to="/stations"
-                className="inline-block px-4 py-2 rounded-xl font-semibold text-white no-underline"
-                style={{ background: '#ff6b2b' }}>
-            Add Station
-          </Link>
-        </div>
+        <EmptyState
+          icon={MapPin}
+          title="No stations yet"
+          description="Create your first food station to get started."
+          action={
+            <Link to="/stations" className="no-underline">
+              <Button>Add Station</Button>
+            </Link>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {stations.map(st => (
