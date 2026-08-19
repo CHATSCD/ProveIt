@@ -188,6 +188,15 @@ create policy "loc_select" on locations for select using (id = get_my_location_i
 create policy "loc_insert" on locations for insert with check (auth.uid() = owner_id);
 create policy "loc_update" on locations for update using (auth.uid() = owner_id);
 
+-- Unauthenticated sign-up needs to browse the location list (AuthPage's
+-- "Select a location" dropdown runs before the user has an employee row,
+-- so get_my_location_id() above resolves to null and hides every row).
+-- Column-scoped via grant since RLS can't restrict by column, keeping
+-- billing/stripe fields out of the anonymous read.
+create policy "loc_select_public" on locations for select to anon using (true);
+revoke select on locations from anon;
+grant select (id, name, address) on locations to anon;
+
 -- employees
 create policy "emp_select_own" on employees for select using (user_id = auth.uid());
 create policy "emp_select_colleagues" on employees for select using (location_id = get_my_location_id());
@@ -464,4 +473,7 @@ begin
     'total', v_total, 'needs_fix', v_total < 9,
     'active_strikes', coalesce(array_length(v_active_strikes, 1), 0),
     'redemptions_applied', v_redemptions,
-    'coaching_triggered', 
+    'coaching_triggered', v_coaching_id is not null
+  );
+end;
+$$;
