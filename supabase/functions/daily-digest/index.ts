@@ -64,7 +64,7 @@ Deno.serve(async (_req) => {
       .limit(1)
 
     const topPerformer = topScores?.[0]
-      ? `\( {topScores[0].employees?.display_name} ( \){topScores[0].total_points} pts)`
+      ? `${topScores[0].employees?.display_name} (${topScores[0].total_points} pts)`
       : 'No data yet'
 
     // Missed stations list
