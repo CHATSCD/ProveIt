@@ -45,7 +45,7 @@ export default function ComplianceExport({ onClose }) {
       const { data: subs } = await supabase
         .from('submissions')
         .select(`
-          id, photo_urls, manager_rating_total, is_late, submitted_at, notes,
+          id, photo_urls, manager_rating_total, is_late, submitted_at,
           employees(display_name),
           check_requests(triggered_at, trigger_type, stations(name, location_id))
         `)

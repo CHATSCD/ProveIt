@@ -47,41 +47,16 @@ function SubmissionCard({ submission, onRated }) {
     if (!freshness || !stocked || !cleanliness) return
     setSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      await supabase.from('submissions').update({
-        manager_rating_freshness: freshness,
-        manager_rating_stocked: stocked,
-        manager_rating_cleanliness: cleanliness,
-        manager_rating_total: total,
-        rated_at: new Date().toISOString(),
-        rated_by: user?.id,
-      }).eq('id', submission.id)
-
-      // Award rating bonus points to employee
-      let bonusPoints = 0
-      if (total >= 13) bonusPoints = 15
-      else if (total >= 9) bonusPoints = 8
-
-      if (bonusPoints > 0 && submission.employee_id) {
-        const weekStart = new Date()
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-        weekStart.setHours(0, 0, 0, 0)
-
-        const { data: score } = await supabase
-          .from('shift_scores')
-          .select('*')
-          .eq('employee_id', submission.employee_id)
-          .gte('period_start', weekStart.toISOString())
-          .single()
-
-        if (score) {
-          await supabase.from('shift_scores').update({
-            total_points: score.total_points + bonusPoints,
-            avg_rating: ((score.avg_rating * (score.on_time_count + score.late_count - 1)) + total) /
-                        (score.on_time_count + score.late_count) || total,
-          }).eq('id', score.id)
-        }
-      }
+      // manager_rating_total is a generated column and the ShiftScore/FixIt/coaching
+      // side effects must run server-side, so go through the RPC rather than
+      // updating the submissions table directly.
+      const { error } = await supabase.rpc('submit_manager_rating', {
+        p_submission_id: submission.id,
+        p_freshness: freshness,
+        p_stocked: stocked,
+        p_cleanliness: cleanliness,
+      })
+      if (error) throw error
 
       onRated()
     } finally {

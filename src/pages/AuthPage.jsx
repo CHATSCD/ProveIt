@@ -25,7 +25,10 @@ export default function AuthPage() {
   async function loadLocations() {
     if (locationsLoaded) return
     const { data, error: locErr } = await supabase.from('locations').select('id, name, address').order('name')
-    if (locErr) setError('Cannot reach the server. Check your Supabase project is active.')
+    if (locErr) {
+      setError('Cannot reach the server. Check your Supabase project is active.')
+      return
+    }
     setLocations(data || [])
     setLocationsLoaded(true)
   }
