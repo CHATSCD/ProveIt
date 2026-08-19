@@ -11,19 +11,38 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are auto-injected by Supabase
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-)
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const supabase = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
 function parseTimeMins(t: string): number {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
 }
 
+// Best-effort push notification — never let a notification failure block
+// the check-scheduling logic above it.
+async function notifyPush(payload: {
+  employee_ids?: string[]
+  location_id?: string
+  role_filter?: string[]
+  title: string
+  body: string
+  url?: string
+}) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (_err) {
+    // swallow — push delivery is best-effort
+  }
+}
+
 Deno.serve(async (_req) => {
   const now = new Date()
-  const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`
+  const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:00`
 
   const weekStart = new Date(now)
   weekStart.setDate(weekStart.getDate() - weekStart.getDay())
@@ -91,6 +110,13 @@ Deno.serve(async (_req) => {
               message: `⚠️ 2nd missed check this shift at ${station.name} — immediate review required`,
               station_name: station.name,
             })
+            await notifyPush({
+              location_id: station.location_id,
+              role_filter: ['manager', 'owner'],
+              title: '⚠️ Two missed checks',
+              body: `${station.name} has missed 2 checks this shift — review needed`,
+              url: '/dashboard',
+            })
           }
         }
       }
@@ -101,6 +127,13 @@ Deno.serve(async (_req) => {
         type: 'missed_check',
         message: `${station.name} check was missed`,
         station_name: station.name,
+      })
+      await notifyPush({
+        location_id: station.location_id,
+        role_filter: ['manager', 'owner'],
+        title: 'Check missed',
+        body: `${station.name} check was missed`,
+        url: '/dashboard',
       })
     }
   }
@@ -140,6 +173,21 @@ Deno.serve(async (_req) => {
       triggered_at: now.toISOString(),
       expires_at: new Date(now.getTime() + submissionWindowMs).toISOString(),
       status: 'pending',
+    })
+
+    const { data: stationInfo } = await supabase
+      .from('stations')
+      .select('name, assigned_employee_id')
+      .eq('id', station.id)
+      .single()
+
+    await notifyPush({
+      employee_ids: stationInfo?.assigned_employee_id ? [stationInfo.assigned_employee_id] : undefined,
+      location_id: stationInfo?.assigned_employee_id ? undefined : station.location_id,
+      role_filter: stationInfo?.assigned_employee_id ? undefined : ['employee', 'manager'],
+      title: '📋 Check due',
+      body: `${stationInfo?.name || 'A station'} needs a check within ${schedule.submission_window_minutes || 15} min`,
+      url: '/dashboard',
     })
   }
 
@@ -190,6 +238,21 @@ Deno.serve(async (_req) => {
       triggered_at: now.toISOString(),
       expires_at: new Date(now.getTime() + submissionWindowMs).toISOString(),
       status: 'pending',
+    })
+
+    const { data: stationInfo } = await supabase
+      .from('stations')
+      .select('name, assigned_employee_id')
+      .eq('id', station.id)
+      .single()
+
+    await notifyPush({
+      employee_ids: stationInfo?.assigned_employee_id ? [stationInfo.assigned_employee_id] : undefined,
+      location_id: stationInfo?.assigned_employee_id ? undefined : station.location_id,
+      role_filter: stationInfo?.assigned_employee_id ? undefined : ['employee', 'manager'],
+      title: '⚡ Surprise check!',
+      body: `${stationInfo?.name || 'A station'} needs a check within ${schedule.submission_window_minutes || 15} min`,
+      url: '/dashboard',
     })
   }
 

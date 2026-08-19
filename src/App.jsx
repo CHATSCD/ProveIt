@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
 
 import AuthPage from './pages/AuthPage'
@@ -11,6 +13,12 @@ import SubmissionsPage from './pages/SubmissionsPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import SetupPage from './pages/SetupPage'
 import StaffPage from './pages/StaffPage'
+import LocationsPage from './pages/LocationsPage'
+import BillingPage from './pages/BillingPage'
+import FixItPage from './pages/FixItPage'
+import CoachingPage from './pages/CoachingPage'
+import CoachingsListPage from './pages/CoachingsListPage'
+import PlatformAdminPage from './pages/PlatformAdminPage'
 
 function LoadingScreen() {
   return (
@@ -31,7 +39,26 @@ function LoadingScreen() {
 }
 
 function AppRoutes() {
-  const { user, employee, loading, isManager } = useAuth()
+  const { user, employee, loading, isManager, isOwner } = useAuth()
+
+  // `is_platform_admin()` is a security-definer RPC (see supabase/schema.sql)
+  // that reports whether the signed-in user is in the platform_admins table.
+  // AuthContext doesn't track this role yet (out of scope here), so it's
+  // checked locally — same pattern used by Navbar for the nav link.
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!user) {
+        if (!cancelled) setIsPlatformAdmin(false)
+        return
+      }
+      const { data } = await supabase.rpc('is_platform_admin')
+      if (!cancelled) setIsPlatformAdmin(!!data)
+    })()
+    return () => { cancelled = true }
+  }, [user])
 
   if (loading) return <LoadingScreen />
 
@@ -61,6 +88,8 @@ function AppRoutes() {
         <Route path="/dashboard" element={isManager ? <ManagerDashboard /> : <EmployeeDashboard />} />
         <Route path="/check/:token" element={<CheckPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
+        <Route path="/fixit/:submissionId" element={<FixItPage />} />
+        <Route path="/coaching/:id" element={<CoachingPage />} />
 
         {/* Manager-only routes */}
         {isManager && (
@@ -68,7 +97,21 @@ function AppRoutes() {
             <Route path="/stations" element={<StationsPage />} />
             <Route path="/submissions" element={<SubmissionsPage />} />
             <Route path="/staff" element={<StaffPage />} />
+            <Route path="/coachings" element={<CoachingsListPage />} />
           </>
+        )}
+
+        {/* Owner-only routes */}
+        {isOwner && (
+          <>
+            <Route path="/locations" element={<LocationsPage />} />
+            <Route path="/billing" element={<BillingPage />} />
+          </>
+        )}
+
+        {/* Platform-admin-only route */}
+        {isPlatformAdmin && (
+          <Route path="/platform-admin" element={<PlatformAdminPage />} />
         )}
 
         {/* Catch-all → dashboard */}

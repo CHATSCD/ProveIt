@@ -100,6 +100,8 @@ export default function EmployeeDashboard() {
   const { employee } = useAuth()
   const [activeChecks, setActiveChecks] = useState([])
   const [recentSubmissions, setRecentSubmissions] = useState([])
+  const [needsFix, setNeedsFix] = useState([])
+  const [pendingCoachings, setPendingCoachings] = useState([])
   const [shiftScore, setShiftScore] = useState(null)
   const [leaderboardRank, setLeaderboardRank] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -133,6 +135,23 @@ export default function EmployeeDashboard() {
         .limit(10)
 
       setRecentSubmissions(subs || [])
+
+      // FixIt: submissions of mine still awaiting a redo, deadline not passed
+      const { data: fixes } = await supabase
+        .from('submissions')
+        .select('id, fix_deadline, check_requests(stations(name))')
+        .eq('employee_id', employee.id)
+        .eq('fix_status', 'needs_fix')
+        .gt('fix_deadline', new Date().toISOString())
+      setNeedsFix(fixes || [])
+
+      // Coaching records of mine still waiting on my signature
+      const { data: coachings } = await supabase
+        .from('coachings')
+        .select('id, is_escalation, coaching_number')
+        .eq('employee_id', employee.id)
+        .is('employee_signed_at', null)
+      setPendingCoachings(coachings || [])
 
       // This week's shift score
       const weekStart = new Date()
@@ -263,10 +282,56 @@ export default function EmployeeDashboard() {
           <div className="text-3xl font-black" style={{ color: '#ff6b2b', fontFamily: 'Syne, sans-serif' }}>
             {shiftScore?.total_points ?? 0}
           </div>
-          <div className="text-xs text-gray-500">ShiftScore™</div>
+          <div className="text-xs text-gray-500">ScoreIt™</div>
           {shiftScore && <ScoreBadge points={shiftScore.total_points} />}
         </div>
       </div>
+
+      {/* FixIt — needs redo within 30 min */}
+      {needsFix.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {needsFix.map(f => (
+            <Link key={f.id} to={`/fixit/${f.id}`} className="block no-underline">
+              <div className="rounded-2xl p-4 flex items-center justify-between gap-3"
+                   style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.4)' }}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🔧</span>
+                  <div>
+                    <div className="font-bold text-white text-sm">
+                      FixIt needed — {f.check_requests?.stations?.name || 'Station'}
+                    </div>
+                    <div className="text-xs" style={{ color: '#fbbf24' }}>Tap to retake photos before time runs out</div>
+                  </div>
+                </div>
+                <div style={{ color: '#f59e0b' }}>→</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* Coaching — needs my signature */}
+      {pendingCoachings.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {pendingCoachings.map(c => (
+            <Link key={c.id} to={`/coaching/${c.id}`} className="block no-underline">
+              <div className="rounded-2xl p-4 flex items-center justify-between gap-3"
+                   style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.35)' }}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📝</span>
+                  <div>
+                    <div className="font-bold text-white text-sm">
+                      {c.is_escalation ? 'Escalation coaching' : 'Coaching'} needs your signature
+                    </div>
+                    <div className="text-xs" style={{ color: '#f87171' }}>Explanation and signature required</div>
+                  </div>
+                </div>
+                <div style={{ color: '#ef4444' }}>→</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* Score stats */}
       {shiftScore && (

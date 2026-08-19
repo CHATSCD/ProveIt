@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { format } from 'date-fns'
+import { notifyPush } from '../lib/push'
 
 const POINTS_TABLE = {
   '13-15': 15,
@@ -37,6 +38,7 @@ function SubmissionCard({ submission, onRated }) {
   const [cleanliness, setCleanliness] = useState(submission.manager_rating_cleanliness || 0)
   const [saving, setSaving] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState(null)
+  const [error, setError] = useState('')
 
   const total = freshness + stocked + cleanliness
   const alreadyRated = !!submission.rated_at
@@ -46,44 +48,39 @@ function SubmissionCard({ submission, onRated }) {
   async function submitRating() {
     if (!freshness || !stocked || !cleanliness) return
     setSaving(true)
+    setError('')
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      await supabase.from('submissions').update({
-        manager_rating_freshness: freshness,
-        manager_rating_stocked: stocked,
-        manager_rating_cleanliness: cleanliness,
-        manager_rating_total: total,
-        rated_at: new Date().toISOString(),
-        rated_by: user?.id,
-      }).eq('id', submission.id)
+      // The entire rating flow — score, ShiftScore points, FixIt trigger,
+      // and coaching/redemption logic — runs server-side in one RPC. None
+      // of it can be tampered with from the client.
+      const { data, error: rpcError } = await supabase.rpc('submit_manager_rating', {
+        p_submission_id: submission.id,
+        p_freshness: freshness,
+        p_stocked: stocked,
+        p_cleanliness: cleanliness,
+      })
+      if (rpcError) throw rpcError
 
-      // Award rating bonus points to employee
-      let bonusPoints = 0
-      if (total >= 13) bonusPoints = 15
-      else if (total >= 9) bonusPoints = 8
-
-      if (bonusPoints > 0 && submission.employee_id) {
-        const weekStart = new Date()
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-        weekStart.setHours(0, 0, 0, 0)
-
-        const { data: score } = await supabase
-          .from('shift_scores')
-          .select('*')
-          .eq('employee_id', submission.employee_id)
-          .gte('period_start', weekStart.toISOString())
-          .single()
-
-        if (score) {
-          await supabase.from('shift_scores').update({
-            total_points: score.total_points + bonusPoints,
-            avg_rating: ((score.avg_rating * (score.on_time_count + score.late_count - 1)) + total) /
-                        (score.on_time_count + score.late_count) || total,
-          }).eq('id', score.id)
+      if (submission.employee_id) {
+        notifyPush({
+          employee_ids: [submission.employee_id],
+          title: data?.needs_fix ? 'FixIt needed — 30 minutes' : 'Your submission was rated',
+          body: `${submission.check_requests?.stations?.name || 'Your check'} scored ${data?.total ?? total}/15`,
+          url: data?.needs_fix ? `/fixit/${submission.id}` : '/dashboard',
+        })
+        if (data?.coaching_triggered) {
+          notifyPush({
+            employee_ids: [submission.employee_id],
+            title: data?.is_escalation ? 'Escalation coaching required' : 'Coaching required',
+            body: 'Please review and sign your coaching record.',
+            url: `/coaching/${data.coaching_id}`,
+          })
         }
       }
 
       onRated()
+    } catch (err) {
+      setError(err.message || 'Failed to save rating. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -156,6 +153,13 @@ function SubmissionCard({ submission, onRated }) {
                    style={{ background: '#111827', border: '1px solid #2d3748' }}>
                 <span className="text-sm text-gray-400">Total Score</span>
                 <span className="font-black text-2xl" style={{ color: ratingColor }}>{total}/15</span>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 rounded-xl text-sm text-red-300"
+                   style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                {error}
               </div>
             )}
 

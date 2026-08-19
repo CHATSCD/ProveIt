@@ -76,7 +76,7 @@ export default function LeaderboardPage() {
     <div className="max-w-2xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="text-center mb-6">
-        <h1 className="text-2xl font-bold text-white mb-1">ShiftScore™ Leaderboard</h1>
+        <h1 className="text-2xl font-bold text-white mb-1">ScoreIt™ Leaderboard</h1>
         <p className="text-gray-400 text-sm">
           Week of {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
         </p>

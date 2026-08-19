@@ -126,6 +126,7 @@ export default function ManagerDashboard() {
   const [topPerformer, setTopPerformer] = useState(null)
   const [loading, setLoading] = useState(true)
   const [pendingRatings, setPendingRatings] = useState(0)
+  const [pendingCoachings, setPendingCoachings] = useState(0)
   const [showExport, setShowExport] = useState(false)
 
   const locationId = employee?.location_id
@@ -202,6 +203,14 @@ export default function ManagerDashboard() {
         .not('photo_urls', 'is', null)
 
       setPendingRatings(count || 0)
+
+      // Coachings still needing a manager signature
+      const { count: coachingCount } = await supabase
+        .from('coachings')
+        .select('id', { count: 'exact' })
+        .eq('location_id', locationId)
+        .is('manager_signed_at', null)
+      setPendingCoachings(coachingCount || 0)
 
       // Top performer this week
       const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay())
@@ -293,6 +302,7 @@ export default function ManagerDashboard() {
           { label: 'On Time', value: todayStats.onTime, color: '#22c55e' },
           { label: 'Missed', value: todayStats.missed, color: '#ef4444', alert: todayStats.missed > 0 },
           { label: 'Pending Rating', value: pendingRatings, color: '#f59e0b', link: pendingRatings > 0 ? '/submissions' : null },
+          { label: 'Coachings Due', value: pendingCoachings, color: '#ef4444', link: pendingCoachings > 0 ? '/coachings' : null },
         ].map((stat, i) => (
           <div key={i} className="rounded-xl p-4" style={{ background: '#1a2235', border: '1px solid #2d3748' }}>
             {stat.link ? (
