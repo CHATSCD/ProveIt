@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { differenceInSeconds, format } from 'date-fns'
+import { notifyPush } from '../lib/push'
 
 function generateId() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -202,11 +203,17 @@ export default function CheckPage() {
 
         if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
 
-        const { data: { publicUrl } } = supabase.storage
+        // The "submissions" bucket is private (compliance photos shouldn't be
+        // publicly guessable), so we need a signed URL rather than a public
+        // one. Long expiry since these need to stay viewable for compliance
+        // records / health inspections, potentially months later.
+        const { data: signedData, error: signError } = await supabase.storage
           .from('submissions')
-          .getPublicUrl(path)
+          .createSignedUrl(path, 60 * 60 * 24 * 365 * 10) // 10 years
 
-        photoUrls.push(publicUrl)
+        if (signError) throw new Error(`Failed to get photo URL: ${signError.message}`)
+
+        photoUrls.push(signedData.signedUrl)
       }
 
       // Determine if late (submitted within window but after trigger + 5 min grace)
@@ -237,6 +244,14 @@ export default function CheckPage() {
       // Award base points (will be finalized after rating)
       const basePoints = isLate ? 3 : (checkRequest.trigger_type === 'random' ? 20 : 10)
       await upsertShiftScore(basePoints, isLate)
+
+      notifyPush({
+        location_id: station.location_id,
+        role_filter: ['manager', 'owner'],
+        title: 'Submission ready to rate',
+        body: `${employee?.display_name || 'An employee'} submitted a check for ${station.name}`,
+        url: '/submissions',
+      })
 
       setSubmitted(true)
     } catch (err) {

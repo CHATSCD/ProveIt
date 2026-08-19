@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { format } from 'date-fns'
+import { notifyPush } from '../lib/push'
 
 const POINTS_TABLE = {
   '13-15': 15,
@@ -37,6 +38,7 @@ function SubmissionCard({ submission, onRated }) {
   const [cleanliness, setCleanliness] = useState(submission.manager_rating_cleanliness || 0)
   const [saving, setSaving] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState(null)
+  const [error, setError] = useState('')
 
   const total = freshness + stocked + cleanliness
   const alreadyRated = !!submission.rated_at
@@ -46,19 +48,39 @@ function SubmissionCard({ submission, onRated }) {
   async function submitRating() {
     if (!freshness || !stocked || !cleanliness) return
     setSaving(true)
+    setError('')
     try {
-      // manager_rating_total is a generated column and the ShiftScore/FixIt/coaching
-      // side effects must run server-side, so go through the RPC rather than
-      // updating the submissions table directly.
-      const { error } = await supabase.rpc('submit_manager_rating', {
+      // The entire rating flow — score, ShiftScore points, FixIt trigger,
+      // and coaching/redemption logic — runs server-side in one RPC. None
+      // of it can be tampered with from the client.
+      const { data, error: rpcError } = await supabase.rpc('submit_manager_rating', {
         p_submission_id: submission.id,
         p_freshness: freshness,
         p_stocked: stocked,
         p_cleanliness: cleanliness,
       })
-      if (error) throw error
+      if (rpcError) throw rpcError
+
+      if (submission.employee_id) {
+        notifyPush({
+          employee_ids: [submission.employee_id],
+          title: data?.needs_fix ? 'FixIt needed — 30 minutes' : 'Your submission was rated',
+          body: `${submission.check_requests?.stations?.name || 'Your check'} scored ${data?.total ?? total}/15`,
+          url: data?.needs_fix ? `/fixit/${submission.id}` : '/dashboard',
+        })
+        if (data?.coaching_triggered) {
+          notifyPush({
+            employee_ids: [submission.employee_id],
+            title: data?.is_escalation ? 'Escalation coaching required' : 'Coaching required',
+            body: 'Please review and sign your coaching record.',
+            url: `/coaching/${data.coaching_id}`,
+          })
+        }
+      }
 
       onRated()
+    } catch (err) {
+      setError(err.message || 'Failed to save rating. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -131,6 +153,13 @@ function SubmissionCard({ submission, onRated }) {
                    style={{ background: '#111827', border: '1px solid #2d3748' }}>
                 <span className="text-sm text-gray-400">Total Score</span>
                 <span className="font-black text-2xl" style={{ color: ratingColor }}>{total}/15</span>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 rounded-xl text-sm text-red-300"
+                   style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                {error}
               </div>
             )}
 

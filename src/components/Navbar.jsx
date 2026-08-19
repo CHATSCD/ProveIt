@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import NotificationBell from './NotificationBell'
 
 const NAV_ITEMS_MANAGER = [
@@ -9,6 +11,11 @@ const NAV_ITEMS_MANAGER = [
   { path: '/leaderboard', label: 'Leaderboard', icon: '▲' },
   { path: '/staff', label: 'Staff', icon: '⊕' },
 ]
+// Desktop-nav-only extras — kept out of NAV_ITEMS_MANAGER so the mobile
+// bottom tab bar (which reuses that array) doesn't get overcrowded.
+const NAV_ITEMS_MANAGER_DESKTOP_EXTRA = [
+  { path: '/coachings', label: 'Coachings' },
+]
 
 const NAV_ITEMS_EMPLOYEE = [
   { path: '/dashboard', label: 'My Checks', icon: '⬡' },
@@ -16,9 +23,35 @@ const NAV_ITEMS_EMPLOYEE = [
 ]
 
 export default function Navbar() {
-  const { employee, signOut, isManager } = useAuth()
+  const { employee, signOut, isManager, isOwner, user } = useAuth()
   const location = useLocation()
   const navItems = isManager ? NAV_ITEMS_MANAGER : NAV_ITEMS_EMPLOYEE
+  const desktopExtraItems = isManager ? NAV_ITEMS_MANAGER_DESKTOP_EXTRA : []
+
+  // `is_platform_admin()` is a security-definer RPC (see supabase/schema.sql).
+  // AuthContext doesn't expose this role yet, so it's checked locally here —
+  // same pattern used in App.jsx to gate the /platform-admin route.
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!user) {
+        if (!cancelled) setIsPlatformAdmin(false)
+        return
+      }
+      const { data } = await supabase.rpc('is_platform_admin')
+      if (!cancelled) setIsPlatformAdmin(!!data)
+    })()
+    return () => { cancelled = true }
+  }, [user])
+
+  const ownerItems = isOwner ? [
+    { path: '/locations', label: 'Locations' },
+    { path: '/billing', label: 'Billing' },
+  ] : []
+  const platformAdminItems = isPlatformAdmin ? [
+    { path: '/platform-admin', label: 'Platform Admin' },
+  ] : []
 
   const roleBadgeColor = {
     owner: '#ff6b2b',
@@ -45,7 +78,7 @@ export default function Navbar() {
 
       {/* Nav links — desktop */}
       <div className="hidden md:flex items-center gap-1">
-        {navItems.map(item => (
+        {[...navItems, ...desktopExtraItems, ...ownerItems, ...platformAdminItems].map(item => (
           <Link
             key={item.path}
             to={item.path}
