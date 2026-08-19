@@ -473,7 +473,207 @@ begin
     'total', v_total, 'needs_fix', v_total < 9,
     'active_strikes', coalesce(array_length(v_active_strikes, 1), 0),
     'redemptions_applied', v_redemptions,
-    'coaching_triggered', v_coaching_id is not null
+    'coaching_triggered', v_coaching_id is not null,
+    'coaching_id', v_coaching_id, 'coaching_number', v_coaching_number,
+    'is_escalation', coalesce(v_is_escalation, false)
   );
 end;
 $$;
+
+create or replace function submit_fixit_photos(
+  p_submission_id uuid, p_photo_urls text[]
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_submission submissions%rowtype;
+begin
+  select * into v_submission from submissions where id = p_submission_id;
+  if v_submission.id is null then raise exception 'Submission not found'; end if;
+  if v_submission.employee_id != (select id from employees where user_id = auth.uid() and is_active = true limit 1) then
+    raise exception 'Not authorized';
+  end if;
+  if v_submission.fix_status != 'needs_fix' then
+    raise exception 'This submission is not awaiting a fix';
+  end if;
+  if now() > v_submission.fix_deadline then
+    update submissions set fix_status = 'expired' where id = p_submission_id;
+    raise exception 'The 30-minute fix window has expired';
+  end if;
+
+  update submissions set fix_photo_urls = p_photo_urls, fix_status = 'fixed', fixed_at = now()
+  where id = p_submission_id;
+end;
+$$;
+
+create or replace function expire_stale_fixits()
+returns void language sql security definer set search_path = public as $$
+  update submissions set fix_status = 'expired'
+  where fix_status = 'needs_fix' and fix_deadline < now();
+$$;
+
+create or replace function sign_coaching_employee(
+  p_coaching_id uuid, p_signature_name text, p_explanation text
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_coaching coachings%rowtype;
+  v_my_employee_id uuid;
+begin
+  select id into v_my_employee_id from employees where user_id = auth.uid() and is_active = true limit 1;
+  select * into v_coaching from coachings where id = p_coaching_id;
+
+  if v_coaching.id is null then raise exception 'Coaching record not found'; end if;
+  if v_coaching.employee_id != v_my_employee_id then raise exception 'Not authorized'; end if;
+  if trim(coalesce(p_explanation, '')) = '' then raise exception 'An explanation is required'; end if;
+  if trim(coalesce(p_signature_name, '')) = '' then raise exception 'A signature is required'; end if;
+
+  update coachings set
+    employee_explanation = p_explanation,
+    employee_signature_name = p_signature_name,
+    employee_signed_at = now(),
+    status = case when manager_signed_at is not null then 'completed' else status end
+  where id = p_coaching_id;
+end;
+$$;
+
+-- NOTE: only ONE version of this function should ever exist. An earlier
+-- 2-arg version (pre-escalation) was left behind by CREATE OR REPLACE
+-- not matching signatures and had to be explicitly DROPped, because it
+-- let a manager sign an escalation coaching without picking a
+-- consequence — a real bypass that was live for a time. If you ever add
+-- parameters to this function again, DROP the old signature explicitly.
+create or replace function sign_coaching_manager(
+  p_coaching_id uuid, p_signature_name text, p_escalation_action text default null
+) returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_coaching coachings%rowtype;
+  v_my_employee_id uuid;
+begin
+  if not is_manager_or_above() then raise exception 'Not authorized'; end if;
+  select id into v_my_employee_id from employees where user_id = auth.uid() and is_active = true limit 1;
+  select * into v_coaching from coachings where id = p_coaching_id;
+
+  if v_coaching.id is null then raise exception 'Coaching record not found'; end if;
+  if v_coaching.location_id != get_my_location_id() then raise exception 'Not authorized'; end if;
+  if trim(coalesce(p_signature_name, '')) = '' then raise exception 'A signature is required'; end if;
+  if v_coaching.is_escalation and p_escalation_action not in ('final_written_warning', 'suspension_3day') then
+    raise exception 'This is a 3rd-strike coaching — select Final Written Warning or 3-Day Suspension before signing';
+  end if;
+
+  update coachings set
+    manager_id = v_my_employee_id,
+    manager_signature_name = p_signature_name,
+    manager_signed_at = now(),
+    escalation_action = case when is_escalation then p_escalation_action else escalation_action end,
+    suspension_start_date = case when is_escalation and p_escalation_action = 'suspension_3day' then current_date else suspension_start_date end,
+    suspension_end_date = case when is_escalation and p_escalation_action = 'suspension_3day' then current_date + 2 else suspension_end_date end,
+    status = case when employee_signed_at is not null then 'completed' else status end
+  where id = p_coaching_id;
+end;
+$$;
+
+-- ============================================================
+-- PLATFORM ADMIN (Shaun's own super-admin tools, not per-location owner)
+-- ============================================================
+
+create or replace function admin_list_locations()
+returns table (
+  id uuid, name text, address text, plan_tier text, subscription_status text,
+  trial_ends_at timestamptz, created_at timestamptz,
+  owner_email text, owner_name text, active_employee_count bigint
+) language plpgsql security definer as $$
+begin
+  if not is_platform_admin() then raise exception 'Not authorized'; end if;
+  return query
+  select l.id, l.name, l.address, l.plan_tier, l.subscription_status, l.trial_ends_at, l.created_at,
+    u.email as owner_email, e.display_name as owner_name,
+    (select count(*) from employees e2 where e2.location_id = l.id and e2.is_active) as active_employee_count
+  from locations l
+  left join employees e on e.location_id = l.id and e.role = 'owner'
+  left join auth.users u on u.id = l.owner_id
+  order by l.created_at desc;
+end;
+$$;
+
+create or replace function admin_grant_trial(p_location_id uuid, p_days int default 14, p_tier text default 'pro')
+returns void language plpgsql security definer as $$
+begin
+  if not is_platform_admin() then raise exception 'Not authorized'; end if;
+  update locations set plan_tier = p_tier, subscription_status = 'trialing',
+    trial_ends_at = now() + (p_days || ' days')::interval
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_comp_plan(p_location_id uuid, p_tier text)
+returns void language plpgsql security definer as $$
+begin
+  if not is_platform_admin() then raise exception 'Not authorized'; end if;
+  update locations set plan_tier = p_tier, subscription_status = 'comped', trial_ends_at = null
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_reset_billing(p_location_id uuid)
+returns void language plpgsql security definer as $$
+begin
+  if not is_platform_admin() then raise exception 'Not authorized'; end if;
+  update locations set plan_tier = 'starter', subscription_status = 'inactive', trial_ends_at = null
+  where id = p_location_id;
+end;
+$$;
+
+create or replace function admin_add_platform_admin(p_email text)
+returns void language plpgsql security definer as $$
+declare
+  v_uid uuid;
+begin
+  if not is_platform_admin() then raise exception 'Not authorized'; end if;
+  select id into v_uid from auth.users where email = p_email;
+  if v_uid is null then
+    raise exception 'No user found with that email — they need to sign up in the app first';
+  end if;
+  insert into platform_admins (user_id, email) values (v_uid, p_email) on conflict (user_id) do nothing;
+end;
+$$;
+
+-- ============================================================
+-- SCHEDULED JOBS (pg_cron — not Vercel cron; see note below)
+-- ============================================================
+-- IMPORTANT: do not add a `crons` block to vercel.json. On Vercel's
+-- Hobby tier that silently kills every deployment after the build
+-- succeeds, with no visible error. All scheduling lives here instead.
+
+select cron.schedule(
+  'process-checks-every-15-min', '*/15 * * * *', $$
+  select net.http_post(
+    url := 'https://aahfydouyyrvrcubwoxa.supabase.co/functions/v1/process-checks',
+    headers := '{"Content-Type": "application/json"}'::jsonb, body := '{}'::jsonb
+  );
+  $$
+);
+
+select cron.schedule(
+  'proveit-daily-digest', '0 12 * * *', $$
+  select net.http_post(
+    url := 'https://aahfydouyyrvrcubwoxa.supabase.co/functions/v1/daily-digest',
+    headers := '{"Content-Type": "application/json"}'::jsonb, body := '{}'::jsonb
+  );
+  $$
+);
+
+select cron.schedule(
+  'proveit-expire-fixits', '*/5 * * * *', $$select expire_stale_fixits();$$
+);
+
+-- ============================================================
+-- STORAGE
+-- ============================================================
+-- Bucket "submissions" is PRIVATE (public: false) — check-photo URLs are
+-- Supabase signed URLs (10-year expiry, set at upload time in
+-- CheckPage.jsx), not public URLs. Do not switch back to getPublicUrl()
+-- on this bucket; it will 403.
+
+-- ============================================================
+-- REALTIME
+-- ============================================================
+-- check_requests, submissions, and notifications are added to the
+-- supabase_realtime publication for live dashboard updates.
