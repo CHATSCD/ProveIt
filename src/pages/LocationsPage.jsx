@@ -2,17 +2,8 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
-// NOTE: The current AuthContext (src/contexts/AuthContext.jsx) only tracks a
-// single active `employee` row per signed-in user — it does not yet expose
-// `memberships` (all locations a user belongs to) or `switchLocation()` the
-// way this page's original design assumes. Those are out of scope for this
-// change (AuthContext.jsx wasn't part of this task), so this page degrades
-// gracefully: it lists just the current location instead of a switchable
-// multi-location list, and hides the "Switch to this" affordance. Once
-// AuthContext exposes `memberships`/`switchLocation`, this page will pick
-// them up automatically since it prefers those values when present.
 export default function LocationsPage() {
-  const { employee, memberships = [], switchLocation, fetchEmployee, user } = useAuth()
+  const { employee, memberships, switchLocation, fetchEmployee, user } = useAuth()
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
@@ -20,12 +11,22 @@ export default function LocationsPage() {
   const [error, setError] = useState('')
   const [capturingFor, setCapturingFor] = useState(null)
   const [gpsError, setGpsError] = useState('')
+  const [switchingFor, setSwitchingFor] = useState(null)
+  const [switchError, setSwitchError] = useState('')
 
-  // Fall back to the single active employee/location when the context
-  // doesn't provide a full memberships list yet.
-  const ownerLocations = memberships.length > 0
-    ? memberships.filter(m => m.role === 'owner')
-    : (employee?.role === 'owner' ? [employee] : [])
+  const ownerLocations = (memberships ?? []).filter(m => m.role === 'owner')
+
+  async function handleSwitch(locationId) {
+    setSwitchingFor(locationId)
+    setSwitchError('')
+    try {
+      await switchLocation(locationId)
+    } catch (err) {
+      setSwitchError(err.message)
+    } finally {
+      setSwitchingFor(null)
+    }
+  }
 
   async function handleSetGps(locationId) {
     if (!navigator.geolocation) { setGpsError('Geolocation not supported on this device.'); return }
@@ -185,13 +186,20 @@ export default function LocationsPage() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                {!isActive && switchLocation && (
+                {!isActive && (
                   <button
-                    onClick={() => switchLocation(m.location_id)}
+                    onClick={() => handleSwitch(m.location_id)}
+                    disabled={switchingFor === m.location_id}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap"
-                    style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}
+                    style={{
+                      background: 'rgba(59,130,246,0.15)',
+                      color: '#60a5fa',
+                      border: '1px solid rgba(59,130,246,0.3)',
+                      cursor: switchingFor === m.location_id ? 'not-allowed' : 'pointer',
+                      opacity: switchingFor === m.location_id ? 0.6 : 1,
+                    }}
                   >
-                    Switch to this
+                    {switchingFor === m.location_id ? 'Switching...' : 'Switch to this'}
                   </button>
                 )}
                 <button
@@ -207,6 +215,13 @@ export default function LocationsPage() {
           )
         })}
       </div>
+
+      {switchError && (
+        <div className="mt-4 p-3 rounded-xl text-sm text-red-300"
+             style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          {switchError}
+        </div>
+      )}
 
       {gpsError && (
         <div className="mt-4 p-3 rounded-xl text-sm text-red-300"

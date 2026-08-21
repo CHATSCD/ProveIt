@@ -26,17 +26,28 @@ create table if not exists locations (
   stripe_customer_id text,
   stripe_subscription_id text,
   subscription_status text default 'inactive',
-  trial_ends_at timestamptz
+  trial_ends_at timestamptz,
+  -- TrustIt geofence (GPS location capture from LocationsPage.jsx). Nullable:
+  -- a location may not have GPS set yet, which the UI treats as "not verified".
+  latitude numeric,
+  longitude numeric,
+  geofence_radius_meters integer default 150
 );
 
 create table if not exists employees (
   id uuid primary key default uuid_generate_v4(),
-  user_id uuid not null unique references auth.users(id),
+  -- NOTE: previously `unique` (one employee row per auth user, globally).
+  -- Relaxed to unique(user_id, location_id) below to support multi-location
+  -- memberships (create_additional_location / LocationsPage.jsx): one user
+  -- can now have one employee row per location, but not two rows at the
+  -- same location.
+  user_id uuid not null references auth.users(id),
   location_id uuid references locations(id) on delete cascade,
   display_name text not null,
   role text not null check (role in ('owner', 'manager', 'employee')),
   is_active boolean default true,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (user_id, location_id)
 );
 
 create table if not exists stations (
@@ -163,6 +174,45 @@ create table if not exists coachings (
   suspension_start_date date,
   suspension_end_date date
 );
+
+-- ============================================================
+-- PENDING SCHEMA PATCHES (idempotent — apply on top of the live DB)
+-- ============================================================
+-- The CREATE TABLE blocks above are a point-in-time snapshot introspected
+-- from the live DB (see header) and are `if not exists`, so they no-op
+-- against an already-existing table. The columns/constraint below are new
+-- and must be applied via ALTER for them to actually land on the live
+-- database; they're also included inline above so a fresh install gets
+-- them from the start.
+
+-- Gap 1: TrustIt geofence columns on locations (GPS capture via
+-- LocationsPage.jsx's "Set GPS / TrustIt" button).
+alter table locations
+  add column if not exists latitude numeric,
+  add column if not exists longitude numeric,
+  add column if not exists geofence_radius_meters integer default 150;
+
+-- Gap 3: relax employees.user_id from a globally-unique column to
+-- unique(user_id, location_id), so one auth user can hold one employee
+-- row per location (multi-location memberships via create_additional_location)
+-- while still being blocked from two rows at the same location.
+do $$
+begin
+  -- Default Postgres name for the original inline `unique` on employees.user_id.
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'employees'::regclass and conname = 'employees_user_id_key'
+  ) then
+    alter table employees drop constraint employees_user_id_key;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'employees'::regclass and conname = 'employees_user_id_location_id_key'
+  ) then
+    alter table employees add constraint employees_user_id_location_id_key unique (user_id, location_id);
+  end if;
+end $$;
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -355,6 +405,75 @@ begin
   values (auth.uid(), v_location_id, v_display_name, 'owner', true);
 
   return v_location_id;
+end;
+$$;
+
+-- Sets the TrustIt geofence anchor point for a location (LocationsPage.jsx's
+-- "Set GPS / TrustIt" button). SECURITY DEFINER + explicit auth guard,
+-- following the same pattern as the RPCs above: only an owner/manager who
+-- actually holds an active employee row AT THAT SPECIFIC LOCATION may set
+-- it — deliberately checked against p_location_id directly (not via
+-- get_my_location_id(), which is only meaningful for a user's single
+-- "current" location) so this works correctly for owners managing
+-- multiple locations.
+create or replace function set_location_coordinates(
+  p_location_id uuid, p_lat numeric, p_lng numeric
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not exists (
+    select 1 from employees
+    where user_id = auth.uid() and location_id = p_location_id
+      and is_active = true and role in ('owner', 'manager')
+  ) then
+    raise exception 'Not authorized';
+  end if;
+
+  if p_lat is null or p_lng is null or p_lat < -90 or p_lat > 90 or p_lng < -180 or p_lng > 180 then
+    raise exception 'Invalid coordinates';
+  end if;
+
+  update locations set latitude = p_lat, longitude = p_lng
+  where id = p_location_id;
+end;
+$$;
+
+-- Flips which of the caller's employees rows is "active" (LocationsPage.jsx's
+-- "Switch to this" button / AuthContext's switchLocation()). This MUST run
+-- server-side and MUST be transactional: get_my_location_id() and every RLS
+-- policy built on it pick an employees row via `is_active = true` with no
+-- deterministic ordering, so a user who ever ends up with more than one
+-- simultaneously-active row (e.g. right after create_additional_location)
+-- would have RLS-scoped reads/writes resolve to an arbitrary location. This
+-- RPC guarantees at most one active row per user at all times: it verifies
+-- the caller actually holds an employees row at p_location_id, then clears
+-- is_active on ALL of the caller's rows and sets it only on that one, in a
+-- single statement-scoped transaction (function body = one implicit
+-- transaction), so no intermediate state with zero or multiple active rows
+-- is ever visible to a concurrent request.
+create or replace function switch_active_location(
+  p_location_id uuid
+) returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if not exists (
+    select 1 from employees
+    where user_id = auth.uid() and location_id = p_location_id
+  ) then
+    raise exception 'Not authorized';
+  end if;
+
+  update employees set is_active = false
+  where user_id = auth.uid() and is_active = true and location_id is distinct from p_location_id;
+
+  update employees set is_active = true
+  where user_id = auth.uid() and location_id = p_location_id;
 end;
 $$;
 
