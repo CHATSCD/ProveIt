@@ -31,8 +31,6 @@ export default function LeaderboardPage() {
   const { employee, isManager } = useAuth()
   const [scores, setScores] = useState([])
   const [loading, setLoading] = useState(true)
-  const [winner, setWinner] = useState(null)
-  const [winnerNote, setWinnerNote] = useState('')
   const [savingWinner, setSavingWinner] = useState(false)
 
   const weekStart = startOfWeek(new Date())
@@ -62,7 +60,6 @@ export default function LeaderboardPage() {
     setSavingWinner(true)
     try {
       // In a real app this would write to a winners table
-      setWinner(score)
       alert(`🏆 ${score.employees?.display_name} marked as this week's winner!`)
     } finally {
       setSavingWinner(false)

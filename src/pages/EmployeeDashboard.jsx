@@ -212,7 +212,9 @@ export default function EmployeeDashboard() {
               setCheckAlert({ stationName: st.name, expiresAt: newCheck.expires_at })
               alertTimer.current = setTimeout(() => setCheckAlert(null), 10000)
             }
-          } catch {}
+          } catch {
+            // malformed realtime payload — ignore and wait for the next event
+          }
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'check_requests' }, loadData)

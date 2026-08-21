@@ -102,7 +102,7 @@ export function AuthProvider({ children }) {
   const isOwner = employee?.role === 'owner'
 
   return (
-    <AuthContext.Provider value={{ user, employee, loading, signIn, signUp, signOut, isManager, isOwner, fetchEmployee }}>
+    <AuthContext.Provider value={{ user, employee, memberships, loading, signIn, signUp, signOut, isManager, isOwner, fetchEmployee, switchLocation }}>
       {children}
     </AuthContext.Provider>
   )

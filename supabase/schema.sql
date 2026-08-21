@@ -214,6 +214,16 @@ begin
   end if;
 end $$;
 
+-- Security fix: the live `emp_insert` policy previously allowed a
+-- self-registering user to insert role='owner' directly (no role
+-- constraint at all), letting anyone grant themselves owner access to any
+-- existing location via a raw client insert. Owners are only ever meant to
+-- be created through setup_owner_location() (security definer, bypasses
+-- RLS) — self-registration (AuthContext.jsx signUp) only ever needs
+-- 'employee'/'manager'. Re-create the policy with that restriction.
+drop policy if exists "emp_insert" on employees;
+create policy "emp_insert" on employees for insert with check (user_id = auth.uid() and role in ('employee', 'manager'));
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
@@ -250,7 +260,12 @@ grant select (id, name, address) on locations to anon;
 -- employees
 create policy "emp_select_own" on employees for select using (user_id = auth.uid());
 create policy "emp_select_colleagues" on employees for select using (location_id = get_my_location_id());
-create policy "emp_insert" on employees for insert with check (user_id = auth.uid());
+-- Self-registration (AuthContext.jsx signUp) only ever needs to insert
+-- 'employee'/'manager' rows for the caller's own user_id — 'owner' rows are
+-- created exclusively via the setup_owner_location() security-definer RPC,
+-- which bypasses RLS. Restricting role here closes a privilege-escalation
+-- hole where a signed-up user could otherwise insert role='owner' directly.
+create policy "emp_insert" on employees for insert with check (user_id = auth.uid() and role in ('employee', 'manager'));
 create policy "emp_update" on employees for update using (location_id = get_my_location_id() and is_manager_or_above());
 
 -- stations

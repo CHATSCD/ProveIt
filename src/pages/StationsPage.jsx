@@ -80,7 +80,7 @@ function QRModal({ station, onClose }) {
   )
 }
 
-function StationForm({ station, onSave, onCancel, locationId, employees }) {
+function StationForm({ station, onSave, onCancel, employees }) {
   const [name, setName] = useState(station?.name || '')
   const [scheduleType, setScheduleType] = useState(station?.schedule?.type || 'scheduled')
   const [intervalMinutes, setIntervalMinutes] = useState(station?.schedule?.interval_minutes || 120)
@@ -353,7 +353,6 @@ export default function StationsPage() {
             station={editingStation}
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditingStation(null) }}
-            locationId={locationId}
             employees={employees}
           />
         </div>

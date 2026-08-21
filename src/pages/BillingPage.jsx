@@ -24,7 +24,7 @@ const PLANS = [
     name: 'Pro+',
     price: '$49.99',
     priceId: 'price_1U3VL9FvIuDEGDk4mckJzNTM',
-    features: ['Everything in Pro', 'ShiftScore™', 'PDF compliance export', 'Multi-location', 'SMS alerts'],
+    features: ['Everything in Pro', 'ScoreIt™', 'PDF compliance export', 'Multi-location', 'SMS alerts'],
   },
 ]
 
