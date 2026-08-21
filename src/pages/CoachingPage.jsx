@@ -39,7 +39,17 @@ export default function CoachingPage() {
   const [mgrSigName, setMgrSigName] = useState('')
   const [escalationChoice, setEscalationChoice] = useState('')
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    // Reset per-record form state when navigating between coaching
+    // records (this component stays mounted across /coaching/:id
+    // client-side navigations) — otherwise a name/explanation typed for
+    // one coaching could linger and get submitted against another.
+    setExplanation('')
+    setEmpSigName('')
+    setMgrSigName('')
+    setEscalationChoice('')
+    load()
+  }, [id])
 
   async function load() {
     setLoading(true)

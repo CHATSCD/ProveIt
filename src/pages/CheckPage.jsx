@@ -153,7 +153,7 @@ export default function CheckPage() {
     if (!navigator.geolocation) { setGeoError('Geolocation not supported'); return }
     navigator.geolocation.getCurrentPosition(
       pos => setGeolocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => setGeoError('Could not get location. Submission will still work but may be flagged.')
+      () => setGeoError('Could not get your location. If this station requires GPS verification, submission will fail without it.')
     )
   }
 
@@ -216,34 +216,20 @@ export default function CheckPage() {
         photoUrls.push(signedData.signedUrl)
       }
 
-      // Determine if late (submitted within window but after trigger + 5 min grace)
-      const triggeredAt = new Date(checkRequest.triggered_at)
-      const graceMs = 5 * 60 * 1000
-      const isLate = Date.now() > triggeredAt.getTime() + graceMs
-
-      // Create submission record
-      const { error: subError } = await supabase.from('submissions').insert({
-        id: submissionId,
-        check_request_id: checkRequest.id,
-        employee_id: employee?.id,
-        submitted_at: new Date().toISOString(),
-        photo_urls: photoUrls,
-        geolocation_lat: geolocation?.lat || null,
-        geolocation_lng: geolocation?.lng || null,
-        employee_note: note || null,
-        is_late: isLate,
+      // submit_check runs the whole submission flow server-side in one
+      // transaction: it verifies the caller against the station's location
+      // (and, if TrustIt GPS is configured, enforces the geofence against
+      // p_lat/p_lng), inserts the submissions row, marks the check request
+      // submitted, and awards shift-score points. See supabase/schema.sql.
+      const { error: rpcError } = await supabase.rpc('submit_check', {
+        p_check_request_id: checkRequest.id,
+        p_photo_urls: photoUrls,
+        p_lat: geolocation?.lat ?? null,
+        p_lng: geolocation?.lng ?? null,
+        p_note: note || null,
       })
 
-      if (subError) throw new Error(subError.message)
-
-      // Mark check request as submitted
-      await supabase.from('check_requests')
-        .update({ status: 'submitted' })
-        .eq('id', checkRequest.id)
-
-      // Award base points (will be finalized after rating)
-      const basePoints = isLate ? 3 : (checkRequest.trigger_type === 'random' ? 20 : 10)
-      await upsertShiftScore(basePoints, isLate)
+      if (rpcError) throw new Error(rpcError.message)
 
       notifyPush({
         location_id: station.location_id,
@@ -258,43 +244,6 @@ export default function CheckPage() {
       setError(err.message)
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  async function upsertShiftScore(points, isLate) {
-    if (!employee) return
-    const weekStart = new Date()
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-    weekStart.setHours(0, 0, 0, 0)
-    const weekEnd = new Date(weekStart)
-    weekEnd.setDate(weekEnd.getDate() + 7)
-
-    const { data: existing } = await supabase
-      .from('shift_scores')
-      .select('*')
-      .eq('employee_id', employee.id)
-      .eq('location_id', employee.location_id)
-      .gte('period_start', weekStart.toISOString())
-      .single()
-
-    if (existing) {
-      await supabase.from('shift_scores').update({
-        total_points: existing.total_points + points,
-        on_time_count: existing.on_time_count + (isLate ? 0 : 1),
-        late_count: existing.late_count + (isLate ? 1 : 0),
-      }).eq('id', existing.id)
-    } else {
-      await supabase.from('shift_scores').insert({
-        employee_id: employee.id,
-        location_id: employee.location_id,
-        period_start: weekStart.toISOString(),
-        period_end: weekEnd.toISOString(),
-        total_points: points,
-        on_time_count: isLate ? 0 : 1,
-        late_count: isLate ? 1 : 0,
-        missed_count: 0,
-        avg_rating: 0,
-      })
     }
   }
 

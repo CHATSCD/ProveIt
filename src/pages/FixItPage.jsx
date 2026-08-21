@@ -72,11 +72,13 @@ export default function FixItPage() {
 
   useEffect(() => {
     if (!submission?.fix_deadline) return
-    const interval = setInterval(() => {
+    function tick() {
       const secs = differenceInSeconds(new Date(submission.fix_deadline), new Date())
       if (secs <= 0) { setExpired(true); setRemaining(0) }
       else setRemaining(secs)
-    }, 1000)
+    }
+    tick()
+    const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
   }, [submission])
 

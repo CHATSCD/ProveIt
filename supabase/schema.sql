@@ -327,7 +327,18 @@ create policy "push_sub_own_delete" on push_subscriptions for delete
 -- coachings — reads only; all writes go through the security-definer
 -- RPCs below (sign_coaching_employee / sign_coaching_manager), which
 -- do their own authorization checks and bypass RLS intentionally.
-create policy "coaching_select_own_location" on coachings for select using (location_id = get_my_location_id());
+-- Bug fix: this used to allow ANY active employee at the location to read
+-- every coworker's coaching record (explanation text, signature names) —
+-- these are confidential disciplinary records, so only the employee named
+-- on the record and managers/owners at that location should see it.
+drop policy if exists "coaching_select_own_location" on coachings;
+create policy "coaching_select_own_location" on coachings for select using (
+  location_id = get_my_location_id()
+  and (
+    is_manager_or_above()
+    or employee_id = (select id from employees where user_id = auth.uid() and is_active = true limit 1)
+  )
+);
 
 -- platform_admins has no policies — deliberately locked down; only
 -- readable/writable via the security-definer admin_* RPCs.
@@ -622,7 +633,7 @@ declare
 begin
   select * into v_submission from submissions where id = p_submission_id;
   if v_submission.id is null then raise exception 'Submission not found'; end if;
-  if v_submission.employee_id != (select id from employees where user_id = auth.uid() and is_active = true limit 1) then
+  if v_submission.employee_id is distinct from (select id from employees where user_id = auth.uid() and is_active = true limit 1) then
     raise exception 'Not authorized';
   end if;
   if v_submission.fix_status != 'needs_fix' then
@@ -656,6 +667,7 @@ begin
 
   if v_coaching.id is null then raise exception 'Coaching record not found'; end if;
   if v_coaching.employee_id != v_my_employee_id then raise exception 'Not authorized'; end if;
+  if v_coaching.employee_signed_at is not null then raise exception 'This coaching has already been signed by the employee'; end if;
   if trim(coalesce(p_explanation, '')) = '' then raise exception 'An explanation is required'; end if;
   if trim(coalesce(p_signature_name, '')) = '' then raise exception 'A signature is required'; end if;
 
@@ -687,8 +699,15 @@ begin
 
   if v_coaching.id is null then raise exception 'Coaching record not found'; end if;
   if v_coaching.location_id != get_my_location_id() then raise exception 'Not authorized'; end if;
+  if v_coaching.manager_signed_at is not null then raise exception 'This coaching has already been signed by a manager'; end if;
   if trim(coalesce(p_signature_name, '')) = '' then raise exception 'A signature is required'; end if;
-  if v_coaching.is_escalation and p_escalation_action not in ('final_written_warning', 'suspension_3day') then
+  -- NULL-safe: `p_escalation_action not in (...)` evaluates to NULL (not
+  -- true) when p_escalation_action is NULL, which PL/pgSQL's `if` treats
+  -- as false — so the exception below never fired and a manager could
+  -- sign an escalation coaching with no consequence recorded by simply
+  -- omitting the parameter. Explicit `is null` check closes that bypass.
+  if v_coaching.is_escalation
+     and (p_escalation_action is null or p_escalation_action not in ('final_written_warning', 'suspension_3day')) then
     raise exception 'This is a 3rd-strike coaching — select Final Written Warning or 3-Day Suspension before signing';
   end if;
 
@@ -701,6 +720,146 @@ begin
     suspension_end_date = case when is_escalation and p_escalation_action = 'suspension_3day' then current_date + 2 else suspension_end_date end,
     status = case when employee_signed_at is not null then 'completed' else status end
   where id = p_coaching_id;
+end;
+$$;
+
+-- ============================================================
+-- TRUSTIT (GPS geofence enforcement on check submissions)
+-- ============================================================
+-- Pure-math helper: great-circle distance between two lat/lng points, in
+-- meters (haversine formula, earth radius ~6371000m). No table access,
+-- so plain SQL/immutable is enough — no SECURITY DEFINER needed.
+create or replace function _haversine_distance_meters(
+  p_lat1 numeric, p_lng1 numeric, p_lat2 numeric, p_lng2 numeric
+) returns numeric language sql immutable as $$
+  select 6371000 * 2 * asin(sqrt(
+    sin(radians(p_lat2 - p_lat1) / 2) ^ 2 +
+    cos(radians(p_lat1)) * cos(radians(p_lat2)) *
+    sin(radians(p_lng2 - p_lng1) / 2) ^ 2
+  ));
+$$;
+
+-- submit_check runs the ENTIRE check-submission flow server-side (photo
+-- URLs are still uploaded to Storage client-side first — plpgsql can't do
+-- that — but everything else that used to be three separate client calls
+-- from CheckPage.jsx — submissions insert, check_requests status update,
+-- shift_scores upsert — now happens here in one transaction, closing the
+-- partial-failure race between those calls). This is also where TrustIt's
+-- GPS geofence is actually enforced: previously the client captured
+-- navigator.geolocation coordinates and wrote them straight into
+-- submissions with nothing checking them server-side, so a submission
+-- could "prove" on-site presence from anywhere. TrustIt is opt-in per the
+-- nullable locations.latitude/longitude columns: a location that hasn't
+-- used the "Set GPS" button (LocationsPage.jsx / set_location_coordinates)
+-- skips enforcement entirely, same as before.
+create or replace function submit_check(
+  p_check_request_id uuid, p_photo_urls text[], p_lat numeric, p_lng numeric, p_note text
+) returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_station_id uuid;
+  v_location_id uuid;
+  v_location_name text;
+  v_triggered_at timestamptz;
+  v_trigger_type text;
+  v_status text;
+  v_lat numeric;
+  v_lng numeric;
+  v_radius int;
+  v_employee_id uuid;
+  v_is_late boolean;
+  v_base_points int;
+  v_distance numeric;
+  v_submission_id uuid;
+  v_week_start timestamptz;
+  v_week_end timestamptz;
+  v_score_row shift_scores%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select cr.station_id, s.location_id, l.name, cr.triggered_at, cr.trigger_type, cr.status,
+         l.latitude, l.longitude, l.geofence_radius_meters
+    into v_station_id, v_location_id, v_location_name, v_triggered_at, v_trigger_type, v_status,
+         v_lat, v_lng, v_radius
+  from check_requests cr
+  join stations s on s.id = cr.station_id
+  join locations l on l.id = s.location_id
+  where cr.id = p_check_request_id;
+
+  if v_station_id is null then
+    raise exception 'Check request not found';
+  end if;
+
+  -- Same authorization the client-side RLS insert policy on submissions
+  -- implied (an employee row for auth.uid()), tightened to specifically
+  -- require an active employee row AT THIS check request's location.
+  select id into v_employee_id from employees
+    where user_id = auth.uid() and location_id = v_location_id and is_active = true
+    limit 1;
+
+  if v_employee_id is null then
+    raise exception 'Not authorized';
+  end if;
+
+  if v_status != 'pending' then
+    raise exception 'This check has already been submitted or is no longer active.';
+  end if;
+
+  -- Geofence enforcement — opt-in: only when the location has GPS configured.
+  if v_lat is not null and v_lng is not null then
+    if p_lat is null or p_lng is null then
+      raise exception 'Location verification failed: you must be within % meters of % to submit this check', v_radius, v_location_name;
+    end if;
+
+    v_distance := _haversine_distance_meters(p_lat, p_lng, v_lat, v_lng);
+    if v_distance > v_radius then
+      raise exception 'Location verification failed: you must be within % meters of % to submit this check', v_radius, v_location_name;
+    end if;
+  end if;
+
+  -- Same 5-minute grace period as CheckPage.jsx's previous client-side calc.
+  v_is_late := now() > (v_triggered_at + interval '5 minutes');
+
+  insert into submissions (
+    check_request_id, employee_id, submitted_at, photo_urls,
+    geolocation_lat, geolocation_lng, employee_note, is_late
+  ) values (
+    p_check_request_id, v_employee_id, now(), coalesce(p_photo_urls, '{}'),
+    p_lat, p_lng, p_note, v_is_late
+  ) returning id into v_submission_id;
+
+  update check_requests set status = 'submitted' where id = p_check_request_id;
+
+  -- Same base-points logic as CheckPage.jsx's upsertShiftScore(): 20 for a
+  -- random check, 10 otherwise, or 3 if late (regardless of trigger type).
+  v_base_points := case when v_is_late then 3 when v_trigger_type = 'random' then 20 else 10 end;
+
+  v_week_start := date_trunc('week', now());
+  v_week_end := v_week_start + interval '7 days';
+
+  select * into v_score_row from shift_scores
+    where employee_id = v_employee_id and location_id = v_location_id and period_start >= v_week_start
+    limit 1;
+
+  if v_score_row.id is not null then
+    update shift_scores set
+      total_points = total_points + v_base_points,
+      on_time_count = on_time_count + (case when v_is_late then 0 else 1 end),
+      late_count = late_count + (case when v_is_late then 1 else 0 end)
+    where id = v_score_row.id;
+  else
+    insert into shift_scores (
+      employee_id, location_id, period_start, period_end,
+      total_points, on_time_count, late_count, missed_count, avg_rating
+    ) values (
+      v_employee_id, v_location_id, v_week_start, v_week_end,
+      v_base_points, case when v_is_late then 0 else 1 end, case when v_is_late then 1 else 0 end,
+      0, 0
+    );
+  end if;
+
+  return jsonb_build_object('ok', true, 'submission_id', v_submission_id, 'is_late', v_is_late);
 end;
 $$;
 
