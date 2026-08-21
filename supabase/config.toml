@@ -1,0 +1,7 @@
+# Supabase CLI project config.
+#
+# Stripe webhooks arrive with no Supabase JWT (they're authenticated only by
+# the Stripe-Signature header, verified in stripe-webhook/index.ts), so this
+# function must be deployed with Supabase's own JWT verification disabled.
+[functions.stripe-webhook]
+verify_jwt = false
