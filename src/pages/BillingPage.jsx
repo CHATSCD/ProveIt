@@ -47,7 +47,10 @@ export default function BillingPage() {
           cancel_url: `${window.location.origin}/billing`,
         },
       })
-      if (fnError) throw fnError
+      if (fnError) {
+        const body = await fnError.context?.json?.().catch(() => null)
+        throw new Error(body?.error || fnError.message)
+      }
       if (data?.url) {
         window.location.href = data.url
       } else {

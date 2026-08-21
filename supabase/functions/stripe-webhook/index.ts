@@ -47,16 +47,29 @@ function resolveTier(subscription: Stripe.Subscription): string | undefined {
   return priceId ? PRICE_TIER_MAP[priceId] : undefined
 }
 
+// Returns true only if a row was actually matched and updated — a bare
+// "no error" isn't enough, since .eq() matching zero rows also reports no
+// error. Callers use this to decide whether to fall back to a different
+// lookup column (e.g. stripe_subscription_id when stripe_customer_id
+// doesn't (yet) match any location).
 async function updateLocationByCustomer(customerId: string, fields: Record<string, unknown>) {
-  const { error } = await supabase.from('locations').update(fields).eq('stripe_customer_id', customerId)
+  const { data, error } = await supabase
+    .from('locations')
+    .update(fields)
+    .eq('stripe_customer_id', customerId)
+    .select('id')
   if (error) console.error(`Failed to update location for customer ${customerId}:`, error.message)
-  return !error
+  return !error && !!data?.length
 }
 
 async function updateLocationBySubscription(subscriptionId: string, fields: Record<string, unknown>) {
-  const { error } = await supabase.from('locations').update(fields).eq('stripe_subscription_id', subscriptionId)
+  const { data, error } = await supabase
+    .from('locations')
+    .update(fields)
+    .eq('stripe_subscription_id', subscriptionId)
+    .select('id')
   if (error) console.error(`Failed to update location for subscription ${subscriptionId}:`, error.message)
-  return !error
+  return !error && !!data?.length
 }
 
 Deno.serve(async (req) => {
